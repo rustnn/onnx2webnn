@@ -48,18 +48,35 @@ Regenerate counts after each handler lands:
 .\.venv\Scripts\python.exe -c "import csv; r=list(csv.DictReader(open('docs/onnx-opsets/opset-26.csv'))); print(sum(1 for x in r if x['webnn_exporter_supported']=='yes'))"
 ```
 
+`generate_onnx_opsets.py` defaults to `../webnn-graph/docs/onnx-opsets/`; pass `-o docs\onnx-opsets` to keep
+inventory CSVs in this repo.
+
 **Related artifacts**
 
 | Artifact | Path |
 |----------|------|
-| Operator inventory (regenerate for opset 26) | `docs/onnx-opsets/opset-26.csv` |
+| Operator inventory (regenerate for opset 26) | `docs/onnx-opsets/opset-26.csv` (or `../webnn-graph/docs/onnx-opsets/`) |
 | Exporter manifest | `scripts/webnn_onnx_ops.py` |
 | Op handlers (Rust) | `src/onnx/ops/*.rs`, registry in `src/onnx/ops/mod.rs` |
 | Opset gate | `src/onnx/convert.rs` (`MIN/MAX_SUPPORTED_OPSET`) |
 | ONNX ↔ WebNN name map | `webnn-onnx-utils/src/operation_names.rs` |
-| Per-op fixtures | `../webnn-graph/tests/onnx/{Op}_opset26.onnx` (generate with `--opset 26`) |
-| Fixture generator | `scripts/generate_onnx_op_tests.py` |
+| Per-op conversion tests | `tests/onnx_ops/{category}/{op}.rs` (auto-generated) |
+| Test generator | `scripts/generate_rust_op_conversion_tests.py` |
 | Model audit CLI | `scripts/onnx_ops_to_csv.py --check-webnn` |
+| Opset upgrade (ad hoc) | `scripts/upgrade_onnx_opset.py` |
+
+**Python scripts (`scripts/`)**
+
+| Script | Role |
+|--------|------|
+| `webnn_onnx_ops.py` | Supported-op manifest; keep in sync with `src/onnx/ops/*.rs` |
+| `generate_rust_op_conversion_tests.py` | Regenerate `tests/onnx_ops/` and `tests/onnx_op_tests.rs` |
+| `onnx_fixture_builders.py`, `onnx_test_builders.py`, `rust_model_emitter.py` | Libraries used by the test generator |
+| `onnx_ops_to_csv.py` | Audit a model's operators and WebNN support |
+| `upgrade_onnx_opset.py` | Upgrade a model to a target `ai.onnx` opset |
+| `generate_onnx_opsets.py` | Per-opset operator inventory CSVs (`webnn_exporter_supported` column) |
+
+Install deps from repo root: `pip install -r requirements.txt` (needs `onnx`, `numpy`).
 
 ---
 
@@ -341,11 +358,11 @@ already exported. Priority: schema v25 and v26.
 | **BitCast** | 26 | no | Stage 3 reject |
 | **CumProd** | 26 | no | Stage 2 decompose |
 
-Regenerate per-op fixtures at opset 26:
+Regenerate per-op Rust conversion tests (fixture opset 26, converter gate opset 18 today):
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\generate_onnx_op_tests.py --opset 26
-.\.venv\Scripts\python.exe scripts\generate_onnx_op_tests.py --opset 26 --only Resize
+.\.venv\Scripts\python.exe scripts\generate_rust_op_conversion_tests.py --fixture-opset 26 --test-opset 18
+cargo test --test onnx_op_tests
 ```
 
 ---
@@ -362,10 +379,10 @@ Use this checklist for **every** operator added in Stages 1–2:
 - [ ] **Register** — add to `OpRegistry` in `src/onnx/ops/mod.rs`
 - [ ] **Sync manifest** — add to `scripts/webnn_onnx_ops.py`
 - [ ] **Update name map** — `webnn-onnx-utils/src/operation_names.rs` if new mapping
-- [ ] **Regenerate inventory** — `scripts/generate_onnx_opsets.py --min 26 --max 26`
-- [ ] **Regenerate fixture** — `scripts/generate_onnx_op_tests.py --opset 26 --only OpName`
-- [ ] **Unit tests** — handler tests; convert smoke test on fixture
-- [ ] **Convert smoke test** — `cargo run -- convert --input tests/onnx/{Op}_opset26.onnx`
+- [ ] **Regenerate inventory** — `scripts/generate_onnx_opsets.py --min 26 --max 26 -o docs/onnx-opsets`
+- [ ] **Regenerate tests** — `scripts/generate_rust_op_conversion_tests.py --fixture-opset 26 --test-opset 18`
+- [ ] **Unit tests** — handler tests; `cargo test --test onnx_op_tests {op_snake}::opset26`
+- [ ] **Convert smoke test** — `cargo run -- convert --input model.onnx --optimize` on a real model using the op
 
 ---
 
@@ -406,7 +423,7 @@ GroupNormalization, RMSNormalization, CastLike, Mean/Sum/LogSoftmax, Swish; then
 ### Phase 4 — Documentation and CI
 
 - Maintain supported/reject lists in lowering docs
-- CI: `onnx_ops_to_csv.py --check-webnn` on checked-in fixtures
+- CI: `scripts/onnx_ops_to_csv.py model.onnx --check-webnn` on checked-in ONNX models
 - Optional: generate `webnn_onnx_ops.py` from Rust `supports()` lists
 
 ---

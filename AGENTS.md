@@ -70,6 +70,29 @@ Supported ONNX opset range for `ai.onnx`: **11–18** (`MIN_SUPPORTED_OPSET` /
 | `src/onnx/constant_folding/` | Optional ONNX constant folding (`--optimize`) |
 | `src/onnx/ops/` | Per-op handlers (`OpHandler` in `ops/mod.rs`) |
 | `src/protos.rs` | ONNX protobuf types |
+| `scripts/` | Python tooling (test generation, model audit, opset inventory) |
+| `tests/onnx_ops/` | Auto-generated per-op conversion integration tests |
+
+## Python scripts (`scripts/`)
+
+Install: `pip install -r requirements.txt` (from repo root; needs `onnx`, `numpy`).
+
+| Script | Purpose |
+|--------|---------|
+| `webnn_onnx_ops.py` | Supported-op manifest — sync with `src/onnx/ops/*.rs` when adding handlers |
+| `generate_rust_op_conversion_tests.py` | Regenerate `tests/onnx_ops/` and `tests/onnx_op_tests.rs` |
+| `onnx_ops_to_csv.py` | List operators in a model; `--check-webnn` exits non-zero if unsupported ops remain |
+| `upgrade_onnx_opset.py` | Upgrade a model to a target `ai.onnx` opset version |
+| `generate_onnx_opsets.py` | Per-opset operator inventory CSVs (`webnn_exporter_supported` column) |
+
+Regenerate conversion tests after changing handlers or the manifest:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\generate_rust_op_conversion_tests.py --fixture-opset 26 --test-opset 18
+cargo test --test onnx_op_tests
+```
+
+See [docs/operator-conversion-plan.md](docs/operator-conversion-plan.md) for the full operator rollout workflow.
 
 ## Dependencies (`Cargo.toml`)
 

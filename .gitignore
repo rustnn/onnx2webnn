@@ -1,0 +1,13 @@
+/target
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store

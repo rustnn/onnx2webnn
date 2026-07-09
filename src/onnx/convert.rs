@@ -1036,6 +1036,14 @@ pub fn convert_onnx<P: AsRef<Path>>(
     convert_model(model, &options)
 }
 
+/// Lower an in-memory ONNX [`ModelProto`] to [`MLGraphBuilder`] and validate with ORT `build()`.
+pub fn convert_model_proto(
+    model: ModelProto,
+    options: &ConvertOptions,
+) -> Result<ValidatedGraph<'static>, OnnxError> {
+    convert_model(model, options)
+}
+
 /// Lower ONNX to [`MLGraphBuilder`] and validate with ORT `build()`.
 pub(crate) fn convert_model(
     model: ModelProto,

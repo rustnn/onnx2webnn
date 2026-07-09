@@ -116,8 +116,13 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
 
     /// Build-time output key; disambiguate when ONNX reuses an input name as output.
     pub fn build_output_key(&self, output_name: &str) -> String {
+        Self::output_key_for(output_name, &self.input_names)
+    }
+
+    /// WebNN graph output key for an ONNX output name (used by tests).
+    pub fn output_key_for(output_name: &str, input_names: &HashSet<String>) -> String {
         let sanitized = Self::webnn_id(output_name);
-        if self.input_names.contains(&sanitized) || self.input_names.contains(output_name) {
+        if input_names.contains(&sanitized) || input_names.contains(output_name) {
             format!("{sanitized}__output")
         } else {
             sanitized

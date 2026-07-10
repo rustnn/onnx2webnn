@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -504,6 +505,18 @@ def _write_mod_rs(path: Path, modules: list[str]) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _format_generated_rust(paths: list[Path]) -> None:
+    """Run rustfmt on generated test files only (not the whole crate)."""
+    if not paths:
+        return
+    rel_paths = [str(path.relative_to(PROJECT_ROOT)) for path in paths]
+    subprocess.run(
+        ["cargo", "fmt", "--", *rel_paths],
+        cwd=PROJECT_ROOT,
+        check=True,
+    )
+
+
 def _should_emit_float16_variant(op_type: str, expect: str) -> bool:
     return expect == "ExpectConvertOp::Success" and op_type not in _FP16_EXCLUDED_OPS
 
@@ -514,6 +527,7 @@ def generate(*, min_opset: int, max_opset: int) -> tuple[int, int, int]:
     ONNX_OPS_DIR.mkdir(parents=True)
 
     categories: dict[str, list[str]] = {}
+    written_files: list[Path] = []
     built = 0
     skipped = 0
     unbuildable = 0
@@ -536,6 +550,7 @@ def generate(*, min_opset: int, max_opset: int) -> tuple[int, int, int]:
             skipped += 1
             unbuildable += 1
             out_file.write_text(content, encoding="utf-8")
+            written_files.append(out_file)
             categories.setdefault(category, []).append(file_stem)
             continue
 
@@ -573,12 +588,17 @@ def generate(*, min_opset: int, max_opset: int) -> tuple[int, int, int]:
 
         content = _emit_op_file(op_type=op_type, variants=variants)
         out_file.write_text(content, encoding="utf-8")
+        written_files.append(out_file)
         categories.setdefault(category, []).append(file_stem)
 
     for category, modules in sorted(categories.items()):
-        _write_mod_rs(ONNX_OPS_DIR / category / "mod.rs", modules)
+        mod_path = ONNX_OPS_DIR / category / "mod.rs"
+        _write_mod_rs(mod_path, modules)
+        written_files.append(mod_path)
 
-    _write_mod_rs(ONNX_OPS_DIR / "mod.rs", sorted(categories.keys()))
+    root_mod_path = ONNX_OPS_DIR / "mod.rs"
+    _write_mod_rs(root_mod_path, sorted(categories.keys()))
+    written_files.append(root_mod_path)
 
     ONNX_OPS_ENTRY.write_text(
         "\n".join(
@@ -598,6 +618,9 @@ def generate(*, min_opset: int, max_opset: int) -> tuple[int, int, int]:
         ),
         encoding="utf-8",
     )
+    written_files.append(ONNX_OPS_ENTRY)
+
+    _format_generated_rust(written_files)
 
     return built, skipped, unbuildable
 

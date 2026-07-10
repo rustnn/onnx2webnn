@@ -68,10 +68,7 @@ impl OpHandler for ConvHandler {
         match op_type {
             "Conv" => self.convert_conv(node, &node_name, context, b, false),
             "ConvTranspose" => self.convert_conv(node, &node_name, context, b, true),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
         }
     }
 }
@@ -380,10 +377,10 @@ impl ConvHandler {
                 filter_shape.as_deref(),
                 b,
             ),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: format!("{}{}D", op_label, spatial_rank),
-                node: node_name.to_string(),
-            }),
+            _ => Err(OnnxError::unsupported_op(
+                format!("{}{}D", op_label, spatial_rank),
+                node_name.to_string(),
+            )),
         }
     }
 
@@ -922,8 +919,12 @@ mod tests {
 
         let err = crate::onnx::ops::convert_handler_with_context(&h, &node, &ctx).unwrap_err();
         match err {
-            OnnxError::UnsupportedOp { op, .. } => {
-                assert!(op.contains("3D"), "expected 3D in op label, got {}", op);
+            OnnxError::UnsupportedOps(ops) => {
+                assert!(
+                    ops[0].op.contains("3D"),
+                    "expected 3D in op label, got {}",
+                    ops[0].op
+                );
             }
             other => panic!("expected UnsupportedOp, got {:?}", other),
         }

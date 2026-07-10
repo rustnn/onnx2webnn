@@ -129,10 +129,7 @@ fn emit_binary(
             .max_with_options(a, b_in, opts)
             .map_err(map_op_error)?,
         _ => {
-            return Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name.to_string(),
-            })
+            return Err(OnnxError::unsupported_op(op_type.to_string(), node_name.to_string(),))
         }
     })
 }

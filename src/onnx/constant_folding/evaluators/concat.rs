@@ -67,13 +67,13 @@ impl ConcatEvaluator {
         }
 
         // For higher-rank tensors with axis != 0, we'd need proper striding
-        Err(OnnxError::UnsupportedOp {
-            op: "Concat".to_string(),
-            node: format!(
+        Err(OnnxError::unsupported_op(
+            "Concat",
+            format!(
                 "axis={} with rank={} (only axis=0 or 1D tensors currently supported)",
                 axis, rank
             ),
-        })
+        ))
     }
 
     /// Concatenate scalar tensors
@@ -121,10 +121,10 @@ impl ConcatEvaluator {
                     vec![result.len() as i64],
                 ))
             }
-            _ => Err(OnnxError::UnsupportedOp {
-                op: "Concat".to_string(),
-                node: format!("data type {:?} not supported", first_type),
-            }),
+            _ => Err(OnnxError::unsupported_op(
+                "Concat",
+                format!("data type {:?} not supported", first_type),
+            )),
         }
     }
 
@@ -193,10 +193,10 @@ impl ConcatEvaluator {
                 }
                 Ok((TensorData::Float32(result), output_shape))
             }
-            _ => Err(OnnxError::UnsupportedOp {
-                op: "Concat".to_string(),
-                node: format!("data type {:?} not supported", first_type),
-            }),
+            _ => Err(OnnxError::unsupported_op(
+                "Concat",
+                format!("data type {:?} not supported", first_type),
+            )),
         }
     }
 }

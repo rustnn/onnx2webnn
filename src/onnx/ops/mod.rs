@@ -18,7 +18,7 @@
 
 // Operator handler trait and registry
 
-use crate::onnx::convert::OnnxError;
+use crate::onnx::convert::{OnnxError, UnsupportedOpEntry};
 use crate::protos::onnx::{NodeProto, TensorProto};
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -180,7 +180,7 @@ impl OpRegistry {
     /// Returns true if any registered handler claims support for `op_type`.
     ///
     /// This mirrors the dispatch in [`convert_node`], but performs no conversion. It lets the
-    /// converter fail fast with a clean [`OnnxError::UnsupportedOp`] before graph setup (input and
+    /// converter fail fast with a clean [`OnnxError::UnsupportedOps`] before graph setup (input and
     /// initializer registration) can panic on tensor kinds an unsupported op happens to use
     /// (e.g. bool/string initializers).
     ///
@@ -189,6 +189,29 @@ impl OpRegistry {
     /// `convert_with_builder` stays aligned with [`convert_node`].
     pub fn is_supported(&self, op_type: &str) -> bool {
         self.handlers.iter().any(|h| h.supports(op_type))
+    }
+
+    /// Collect every graph node whose `op_type` has no registered handler.
+    pub fn collect_unsupported_nodes(&self, nodes: &[NodeProto]) -> Vec<UnsupportedOpEntry> {
+        nodes
+            .iter()
+            .filter_map(|node| {
+                let op_type = node.op_type.as_str();
+                if self.is_supported(op_type) {
+                    None
+                } else {
+                    let node_name = if node.name.is_empty() {
+                        "<unnamed>".to_string()
+                    } else {
+                        node.name.clone()
+                    };
+                    Some(UnsupportedOpEntry {
+                        op: op_type.to_string(),
+                        node: node_name,
+                    })
+                }
+            })
+            .collect()
     }
 
     /// Convert an ONNX node using the appropriate handler and apply to the MLGraphBuilder.
@@ -214,10 +237,7 @@ impl OpRegistry {
             "<unnamed>".to_string()
         };
 
-        Err(OnnxError::UnsupportedOp {
-            op: op_type.to_string(),
-            node: node_name,
-        })
+        Err(OnnxError::unsupported_op(op_type, node_name))
     }
 }
 

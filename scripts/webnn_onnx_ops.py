@@ -32,6 +32,10 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "Equal",
         "GreaterOrEqual",
         "LessOrEqual",
+        "Not",
+        "And",
+        "Or",
+        "Xor",
         # conditional.rs
         "Where",
         # normalization.rs
@@ -76,6 +80,20 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "Cos",
         "Sin",
         "Identity",
+        "Floor",
+        "Ceil",
+        "Sign",
+        "Tan",
+        "Reciprocal",
+        "Round",
+        "HardSwish",
+        "Softplus",
+        "Softsign",
+        "Elu",
+        "LeakyRelu",
+        "HardSigmoid",
+        "Clip",
+        "PRelu",
         # scatter.rs
         "ScatterND",
         # pad.rs

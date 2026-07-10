@@ -35,10 +35,7 @@ impl OpHandler for ConversionHandler {
         match op_type {
             "Cast" => self.convert_cast(node, &node_name, b),
             "Constant" => self.convert_constant(node, &node_name, b),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
         }
     }
 }

@@ -36,10 +36,7 @@ impl OpHandler for MatMulHandler {
         match op_type {
             "MatMul" => self.convert_matmul(node, &node_name, b),
             "Gemm" => self.convert_gemm(node, &node_name, context, b),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
         }
     }
 }

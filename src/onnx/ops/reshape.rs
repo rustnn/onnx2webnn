@@ -76,10 +76,7 @@ impl OpHandler for ReshapeHandler {
             "Tile" => self.convert_tile(node, &node_name, context, b),
             "Expand" => self.convert_expand(node, &node_name, context, b),
             "Flatten" => self.convert_flatten(node, &node_name, context, b),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
         }
     }
 }

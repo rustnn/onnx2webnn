@@ -61,10 +61,7 @@ impl OpHandler for UtilityHandler {
             "ConstantOfShape" => self.convert_constant_of_shape(node, &node_name, context, b),
             "Range" => self.convert_range(node, &node_name, context, b),
             "Trilu" => self.convert_trilu(node, &node_name, context, b),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
         }
     }
 }

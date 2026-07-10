@@ -49,8 +49,30 @@ const MAX_SUPPORTED_OPSET: i64 = 26;
 fn is_element_wise_logical_onnx_op(op_type: &str) -> bool {
     matches!(
         op_type,
-        "Equal" | "Greater" | "Less" | "GreaterOrEqual" | "LessOrEqual"
+        "Equal"
+            | "Greater"
+            | "Less"
+            | "GreaterOrEqual"
+            | "LessOrEqual"
+            | "Not"
+            | "And"
+            | "Or"
+            | "Xor"
     )
+}
+
+/// One unsupported ONNX node reported during conversion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedOpEntry {
+    pub op: String,
+    pub node: String,
+}
+
+fn format_unsupported_ops_list(ops: &[UnsupportedOpEntry]) -> String {
+    ops.iter()
+        .map(|entry| format!("{} (node: {})", entry.op, entry.node))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Debug, Error)]
@@ -64,8 +86,8 @@ pub enum OnnxError {
     #[error("unsupported ONNX opset version {version} for domain '{domain}'")]
     UnsupportedOpset { domain: String, version: i64 },
 
-    #[error("unsupported operator: {op} (node: {node})")]
-    UnsupportedOp { op: String, node: String },
+    #[error("unsupported operator(s): {}", format_unsupported_ops_list(.0))]
+    UnsupportedOps(Vec<UnsupportedOpEntry>),
 
     #[error("missing required attribute: {attr} in {op}")]
     MissingAttribute { attr: String, op: String },
@@ -78,6 +100,29 @@ pub enum OnnxError {
 
     #[error("shape inference failed for node: {0}")]
     ShapeInference(String),
+}
+
+impl OnnxError {
+    /// Report a single unsupported operator/node pair.
+    pub fn unsupported_op(op: impl Into<String>, node: impl Into<String>) -> Self {
+        Self::UnsupportedOps(vec![UnsupportedOpEntry {
+            op: op.into(),
+            node: node.into(),
+        }])
+    }
+
+    /// True when conversion failed because one or more operators are unsupported.
+    pub fn is_unsupported_op(&self) -> bool {
+        matches!(self, Self::UnsupportedOps(_))
+    }
+
+    /// Unsupported operator entries, when this error is [`Self::UnsupportedOps`].
+    pub fn unsupported_ops(&self) -> Option<&[UnsupportedOpEntry]> {
+        match self {
+            Self::UnsupportedOps(ops) => Some(ops),
+            _ => None,
+        }
+    }
 }
 
 /// Sanitize ONNX identifiers for WebNN DSL compatibility
@@ -216,7 +261,7 @@ impl OnnxConverter {
         // Fail fast on unsupported operators before any graph setup. Input/initializer
         // registration below can error on tensor kinds an unsupported op happens to use
         // (e.g. bool/string initializers), which would otherwise mask the real cause with a
-        // confusing shape/builder error instead of a clean `UnsupportedOp`.
+        // confusing shape/builder error instead of a clean `UnsupportedOps`.
         //
         // **Domain behavior (today):** the pre-scan keys handlers by `op_type` only; per-node
         // `domain` (when present on `NodeProto`) is not consulted. That matches
@@ -231,19 +276,9 @@ impl OnnxConverter {
         // domain-aware dispatch is required before enabling those graphs.
         {
             let registry = crate::onnx::ops::OpRegistry::new();
-            for node in onnx_graph.node.as_slice() {
-                let op_type = node.op_type.as_str();
-                if !registry.is_supported(op_type) {
-                    let node_name = if node.name.is_empty() {
-                        "<unnamed>".to_string()
-                    } else {
-                        node.name.clone()
-                    };
-                    return Err(OnnxError::UnsupportedOp {
-                        op: op_type.to_string(),
-                        node: node_name,
-                    });
-                }
+            let unsupported = registry.collect_unsupported_nodes(onnx_graph.node.as_slice());
+            if !unsupported.is_empty() {
+                return Err(OnnxError::UnsupportedOps(unsupported));
             }
         }
 
@@ -1235,6 +1270,51 @@ mod tests {
         // Verify MIN value
         let min_bytes: [u8; 8] = bytes[8..16].try_into().unwrap();
         assert_eq!(i64::from_le_bytes(min_bytes), i64::MIN);
+    }
+
+    #[test]
+    fn test_collects_all_unsupported_ops() {
+        use crate::protos::onnx::{GraphProto, ModelProto, NodeProto, OperatorSetIdProto};
+
+        let model = ModelProto {
+            opset_import: vec![OperatorSetIdProto {
+                version: 17,
+                ..Default::default()
+            }],
+            graph: Some(GraphProto {
+                node: vec![
+                    NodeProto {
+                        op_type: "If".to_string(),
+                        name: "if_node".to_string(),
+                        ..Default::default()
+                    },
+                    NodeProto {
+                        op_type: "Loop".to_string(),
+                        name: "loop_node".to_string(),
+                        ..Default::default()
+                    },
+                    NodeProto {
+                        op_type: "Add".to_string(),
+                        name: "add_node".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let err = match convert_model_proto(model, &ConvertOptions::default()) {
+            Err(err) => err,
+            Ok(_) => panic!("expected unsupported ops error"),
+        };
+        assert!(err.is_unsupported_op());
+        let ops = err.unsupported_ops().expect("unsupported ops payload");
+        assert_eq!(ops.len(), 2);
+        assert_eq!(ops[0].op, "If");
+        assert_eq!(ops[0].node, "if_node");
+        assert_eq!(ops[1].op, "Loop");
+        assert_eq!(ops[1].node, "loop_node");
     }
 
     #[test]

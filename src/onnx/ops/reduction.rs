@@ -51,10 +51,7 @@ impl OpHandler for ReductionHandler {
             "ReduceMin" => self.convert_reduce(node, &node_name, context, b, |g, i, o| {
                 g.reduce_min_with_options(i, o)
             }),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
         }
     }
 }

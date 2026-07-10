@@ -47,7 +47,7 @@ pub fn assert_op_matches_ort(
     let result = convert_model_proto(model.clone(), &ConvertOptions::default());
     match expect {
         ExpectConvertOp::UnsupportedOp => match result {
-            Err(OnnxError::UnsupportedOp { .. }) => {}
+            Err(err) if err.is_unsupported_op() => {}
             Err(err) => panic!("expected UnsupportedOp, got {err}"),
             Ok(_) => panic!("expected UnsupportedOp, got Ok"),
         },

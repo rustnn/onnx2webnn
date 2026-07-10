@@ -21,13 +21,13 @@
 // to unblock reshape/axes/starts/ends calculations. Dynamic dims cause errors so
 // callers can ask users to run onnx-simplifier or provide overrides.
 use crate::onnx::convert::{map_onnx_data_type, sanitize_identifier};
-use rustnn::DataType;
-use rustnn::graph::{Dimension, DynamicDimension};
-use std::collections::BTreeMap;
 use crate::protos::onnx::{
     tensor_shape_proto::dimension::Value as DimensionValue, type_proto::Value as TypeProtoValue,
     GraphProto, ModelProto, NodeProto, TensorProto, TensorProto_DataType,
 };
+use rustnn::graph::{Dimension, DynamicDimension};
+use rustnn::DataType;
+use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -197,16 +197,13 @@ fn seed_constant_nodes(
                 let dtype = map_onnx_data_type(t.data_type)
                     .map_err(|_| ShapeInferenceError::UnsupportedDataType(t.data_type))?;
                 result.value_types.insert(out_name.clone(), dtype);
+                result
+                    .value_shapes
+                    .insert(out_name.clone(), t.dims.as_slice().to_vec());
 
                 let vals = read_int_tensor(t);
                 if !vals.is_empty() {
-                    result.const_values.insert(out_name.clone(), vals.clone());
-                    let shape: Vec<i64> = if vals.len() == 1 {
-                        Vec::new()
-                    } else {
-                        vec![vals.len() as i64]
-                    };
-                    result.value_shapes.insert(out_name.clone(), shape);
+                    result.const_values.insert(out_name.clone(), vals);
                 }
             }
         }
@@ -288,7 +285,8 @@ pub fn infer_node_output_shape(
         }
 
         // Binary operations with NumPy-style broadcasting semantics.
-        "Add" | "Sub" | "Mul" | "Div" | "Pow" => {
+        "Add" | "Sub" | "Mul" | "Div" | "Pow" | "Equal" | "Greater" | "GreaterOrEqual" | "Less"
+        | "LessOrEqual" | "And" | "Or" | "Xor" => {
             let ins = node.input.as_slice();
             if ins.len() < 2 {
                 return None;
@@ -518,6 +516,12 @@ pub fn infer_node_output_shape(
                 .find(|a| a.name.as_str() == "axes")
                 .map(|a| a.ints.clone())
                 .unwrap_or_default();
+            if axes.is_empty() && ins.len() > 1 {
+                axes = const_values
+                    .get(ins[1].as_str())
+                    .cloned()
+                    .unwrap_or_default();
+            }
 
             if axes.is_empty() {
                 return None;
@@ -642,9 +646,9 @@ pub fn infer_node_output_shape(
                 let total_input: i64 = input_shape.iter().product();
                 let known: i64 = target.iter().filter(|&&d| d != -1).product();
                 if known == 0 || total_input % known != 0 {
-                    return None;
-                }
-                if let Some(idx) = target.iter().position(|&d| d == -1) {
+                    // Keep the unresolved dimension. Downstream ops such as MatMul can often
+                    // resolve or replace it from their other inputs.
+                } else if let Some(idx) = target.iter().position(|&d| d == -1) {
                     target[idx] = total_input / known;
                 }
             }
@@ -1642,8 +1646,7 @@ fn constant_of_shape_fill(node: &NodeProto) -> (DataType, i64) {
                     fill_value = t.float_data.as_slice()[0].to_bits() as i64;
                 } else if t.raw_data.as_slice().len() >= 4 {
                     let raw = &t.raw_data.as_slice()[..4];
-                    fill_value =
-                        u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as i64;
+                    fill_value = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as i64;
                 } else {
                     fill_value = 0f32.to_bits() as i64;
                 }
@@ -1694,7 +1697,11 @@ fn fold_shape_constants(
                     const_values.get(inputs[1].as_str()).cloned(),
                 ) {
                     if target.contains(&-1) {
-                        let total: i64 = if data.is_empty() { 1 } else { data.len() as i64 };
+                        let total: i64 = if data.is_empty() {
+                            1
+                        } else {
+                            data.len() as i64
+                        };
                         let known: i64 = target.iter().filter(|&&d| d != -1).product();
                         if known != 0 {
                             if let Some(idx) = target.iter().position(|&d| d == -1) {
@@ -1712,7 +1719,10 @@ fn fold_shape_constants(
 
         if options.fold_unsqueeze_axes && op_type == "Unsqueeze" {
             let inputs = node.input.as_slice();
-            if let Some(data) = inputs.first().and_then(|i| const_values.get(i.as_str()).cloned()) {
+            if let Some(data) = inputs
+                .first()
+                .and_then(|i| const_values.get(i.as_str()).cloned())
+            {
                 let mut axes: Vec<i64> = node
                     .attribute
                     .as_slice()
@@ -1759,161 +1769,159 @@ fn fold_shape_constants(
 
         if op_type == "Where" && options.fold_where_values {
             let inputs = node.input.as_slice();
-                            if inputs.len() < 3 {
-                                continue;
-                            }
+            if inputs.len() < 3 {
+                continue;
+            }
 
-                            // Debug: always log Where operations that involve rotary
-                            if inputs.iter().any(|i| i.contains("rotary")) {
-                                crate::debug_println!("[WHERE DEBUG] Processing Where node");
-                                crate::debug_println!("  inputs: {:?}", inputs);
-                                crate::debug_println!("  outputs: {:?}", outputs);
-                            }
+            // Debug: always log Where operations that involve rotary
+            if inputs.iter().any(|i| i.contains("rotary")) {
+                crate::debug_println!("[WHERE DEBUG] Processing Where node");
+                crate::debug_println!("  inputs: {:?}", inputs);
+                crate::debug_println!("  outputs: {:?}", outputs);
+            }
 
-                            let cond = const_values.get(inputs[0].as_str()).cloned();
-                            let a = const_values.get(inputs[1].as_str()).cloned();
-                            let b = const_values.get(inputs[2].as_str()).cloned();
-                            let cond_is_const = cond.is_some();
+            let cond = const_values.get(inputs[0].as_str()).cloned();
+            let a = const_values.get(inputs[1].as_str()).cloned();
+            let b = const_values.get(inputs[2].as_str()).cloned();
+            let cond_is_const = cond.is_some();
 
-                            if inputs.iter().any(|i| i.contains("rotary")) {
-                                crate::debug_println!("  cond const: {}", cond.is_some());
-                                crate::debug_println!("  a const: {}", a.is_some());
-                                crate::debug_println!("  b const: {}", b.is_some());
-                            }
+            if inputs.iter().any(|i| i.contains("rotary")) {
+                crate::debug_println!("  cond const: {}", cond.is_some());
+                crate::debug_println!("  a const: {}", a.is_some());
+                crate::debug_println!("  b const: {}", b.is_some());
+            }
 
-                            // Case 1: All inputs are constant - evaluate fully
-                            if let (Some(cond), Some(a), Some(b)) = (cond, a, b) {
-                                if cond.len() != a.len() || a.len() != b.len() {
-                                    continue;
-                                }
+            // Case 1: All inputs are constant - evaluate fully
+            if let (Some(cond), Some(a), Some(b)) = (cond, a, b) {
+                if cond.len() != a.len() || a.len() != b.len() {
+                    continue;
+                }
 
-                                // HEURISTIC: If one branch is a trivial all-ones placeholder and the other is not,
-                                // prefer the non-trivial one regardless of condition value.
-                                // This handles rotary/Expand patterns like Where(cond, [1,1,1], [1,32,1]).
-                                let is_trivial =
-                                    |vals: &[i64]| -> bool { is_all_ones_shape_vector(vals) };
+                // HEURISTIC: If one branch is a trivial all-ones placeholder and the other is not,
+                // prefer the non-trivial one regardless of condition value.
+                // This handles rotary/Expand patterns like Where(cond, [1,1,1], [1,32,1]).
+                let is_trivial = |vals: &[i64]| -> bool { is_all_ones_shape_vector(vals) };
 
-                                let mut out = if is_trivial(&a) && !is_trivial(&b) {
-                                    if inputs.iter().any(|i| i.contains("rotary")) {
-                                        crate::debug_println!("[WHERE SMART EVAL] Preferring non-trivial branch b={:?} over trivial a={:?}", b, a);
-                                    }
-                                    b
-                                } else if is_trivial(&b) && !is_trivial(&a) {
-                                    if inputs.iter().any(|i| i.contains("rotary")) {
-                                        crate::debug_println!("[WHERE SMART EVAL] Preferring non-trivial branch a={:?} over trivial b={:?}", a, b);
-                                    }
-                                    a
-                                } else {
-                                    // Normal element-wise evaluation
-                                    let mut result = Vec::with_capacity(a.len());
-                                    for i in 0..a.len() {
-                                        result.push(if cond[i] != 0 { a[i] } else { b[i] });
-                                    }
-                                    result
-                                };
+                let mut out = if is_trivial(&a) && !is_trivial(&b) {
+                    if inputs.iter().any(|i| i.contains("rotary")) {
+                        crate::debug_println!("[WHERE SMART EVAL] Preferring non-trivial branch b={:?} over trivial a={:?}", b, a);
+                    }
+                    b
+                } else if is_trivial(&b) && !is_trivial(&a) {
+                    if inputs.iter().any(|i| i.contains("rotary")) {
+                        crate::debug_println!("[WHERE SMART EVAL] Preferring non-trivial branch a={:?} over trivial b={:?}", a, b);
+                    }
+                    a
+                } else {
+                    // Normal element-wise evaluation
+                    let mut result = Vec::with_capacity(a.len());
+                    for i in 0..a.len() {
+                        result.push(if cond[i] != 0 { a[i] } else { b[i] });
+                    }
+                    result
+                };
 
-                                // HEURISTIC: If the output contains -1 (reshape placeholder), try to resolve it
-                                // For rotary embedding patterns, check if this feeds into an Expand operation
-                                if out.contains(&-1) && !outputs.is_empty() {
-                                    let output_name = outputs[0].as_str();
-                                    // Look for Expand nodes that use this Where output as their shape input
-                                    for node in graph.node.as_slice() {
-                                        if node.op_type.as_str() == "Expand"
-                                            && node.input.len() >= 2
-                                            && node.input[1].as_str() == output_name
-                                        {
-                                            // Found the Expand - check its data input shape
-                                            let data_input = node.input[0].as_str();
-                                            if let Some(data_shape) = value_shapes.get(data_input) {
-                                                // Resolve -1 based on data shape
-                                                if out.len() == data_shape.len() {
-                                                    for i in 0..out.len() {
-                                                        if out[i] == -1 {
-                                                            out[i] = data_shape[i];
-                                                            if inputs.iter().any(|inp| inp.contains("rotary")) {
-                                                                crate::debug_println!("[WHERE RESOLVE] Resolved -1 at position {} to {} from data shape {:?}", i, data_shape[i], data_shape);
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                // HEURISTIC: If the output contains -1 (reshape placeholder), try to resolve it
+                // For rotary embedding patterns, check if this feeds into an Expand operation
+                if out.contains(&-1) && !outputs.is_empty() {
+                    let output_name = outputs[0].as_str();
+                    // Look for Expand nodes that use this Where output as their shape input
+                    for node in graph.node.as_slice() {
+                        if node.op_type.as_str() == "Expand"
+                            && node.input.len() >= 2
+                            && node.input[1].as_str() == output_name
+                        {
+                            // Found the Expand - check its data input shape
+                            let data_input = node.input[0].as_str();
+                            if let Some(data_shape) = value_shapes.get(data_input) {
+                                // Resolve -1 based on data shape
+                                if out.len() == data_shape.len() {
+                                    for i in 0..out.len() {
+                                        if out[i] == -1 {
+                                            out[i] = data_shape[i];
+                                            if inputs.iter().any(|inp| inp.contains("rotary")) {
+                                                crate::debug_println!("[WHERE RESOLVE] Resolved -1 at position {} to {} from data shape {:?}", i, data_shape[i], data_shape);
                                             }
                                         }
                                     }
                                 }
-
-                                let out_name = outputs[0].to_string();
-                                let shape = if out.len() == 1 {
-                                    Vec::new()
-                                } else {
-                                    vec![out.len() as i64]
-                                };
-                                if inputs.iter().any(|i| i.contains("rotary")) {
-                                    crate::debug_println!("[WHERE STORE] Storing {} = {:?}", out_name, out);
-                                }
-                                const_values.insert(out_name.clone(), out);
-                                value_shapes.insert(out_name, shape);
-                            } else {
-                                // Case 2: Some inputs are dynamic - use shape inference heuristics
-                                // This handles the common pattern: Where(dynamic_condition, trivial_constant, dynamic_value)
-                                // Prefer the more specific/larger shape over trivial shapes like [1,1,1]
-
-                                let a_const = const_values.get(inputs[1].as_str());
-                                let b_const = const_values.get(inputs[2].as_str());
-                                let a_shape = value_shapes.get(inputs[1].as_str());
-                                let b_shape = value_shapes.get(inputs[2].as_str());
-
-                                // Heuristic: If one branch is a trivial all-ones placeholder and the other has
-                                // shape info, use the other. When the condition is dynamic, never bake the
-                                // placeholder branch into const_values.
-                                let is_trivial_constant =
-                                    |vals: &[i64]| -> bool { is_all_ones_shape_vector(vals) };
-
-                                let preferred_values = if cond_is_const {
-                                    if let (Some(a_vals), None) = (a_const, b_const) {
-                                        if is_trivial_constant(a_vals) && b_shape.is_some() {
-                                            crate::debug_println!("[WHERE HEURISTIC] Preferring dynamic input {} (shape {:?}) over trivial constant {:?}", inputs[2], b_shape, a_vals);
-                                            b_shape.cloned()
-                                        } else {
-                                            Some(a_vals.clone())
-                                        }
-                                    } else if let (None, Some(b_vals)) = (a_const, b_const) {
-                                        if is_trivial_constant(b_vals) && a_shape.is_some() {
-                                            crate::debug_println!("[WHERE HEURISTIC] Preferring dynamic input {} (shape {:?}) over trivial constant {:?}", inputs[1], a_shape, b_vals);
-                                            a_shape.cloned()
-                                        } else {
-                                            Some(b_vals.clone())
-                                        }
-                                    } else {
-                                        None
-                                    }
-                                } else if let (Some(a_vals), None) = (a_const, b_const) {
-                                    if is_trivial_constant(a_vals) {
-                                        b_shape.cloned()
-                                    } else {
-                                        None
-                                    }
-                                } else if let (None, Some(b_vals)) = (a_const, b_const) {
-                                    if is_trivial_constant(b_vals) {
-                                        a_shape.cloned()
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                };
-
-                                // Set both const_values and value_shapes for the output
-                                if let Some(values) = preferred_values {
-                                    let out_name = outputs[0].to_string();
-                                    let shape = if values.len() == 1 {
-                                        Vec::new()
-                                    } else {
-                                        vec![values.len() as i64]
-                                    };
-                                    const_values.insert(out_name.clone(), values);
-                                    value_shapes.insert(out_name, shape);
-                                }
                             }
+                        }
+                    }
+                }
+
+                let out_name = outputs[0].to_string();
+                let shape = if out.len() == 1 {
+                    Vec::new()
+                } else {
+                    vec![out.len() as i64]
+                };
+                if inputs.iter().any(|i| i.contains("rotary")) {
+                    crate::debug_println!("[WHERE STORE] Storing {} = {:?}", out_name, out);
+                }
+                const_values.insert(out_name.clone(), out);
+                value_shapes.insert(out_name, shape);
+            } else {
+                // Case 2: Some inputs are dynamic - use shape inference heuristics
+                // This handles the common pattern: Where(dynamic_condition, trivial_constant, dynamic_value)
+                // Prefer the more specific/larger shape over trivial shapes like [1,1,1]
+
+                let a_const = const_values.get(inputs[1].as_str());
+                let b_const = const_values.get(inputs[2].as_str());
+                let a_shape = value_shapes.get(inputs[1].as_str());
+                let b_shape = value_shapes.get(inputs[2].as_str());
+
+                // Heuristic: If one branch is a trivial all-ones placeholder and the other has
+                // shape info, use the other. When the condition is dynamic, never bake the
+                // placeholder branch into const_values.
+                let is_trivial_constant = |vals: &[i64]| -> bool { is_all_ones_shape_vector(vals) };
+
+                let preferred_values = if cond_is_const {
+                    if let (Some(a_vals), None) = (a_const, b_const) {
+                        if is_trivial_constant(a_vals) && b_shape.is_some() {
+                            crate::debug_println!("[WHERE HEURISTIC] Preferring dynamic input {} (shape {:?}) over trivial constant {:?}", inputs[2], b_shape, a_vals);
+                            b_shape.cloned()
+                        } else {
+                            Some(a_vals.clone())
+                        }
+                    } else if let (None, Some(b_vals)) = (a_const, b_const) {
+                        if is_trivial_constant(b_vals) && a_shape.is_some() {
+                            crate::debug_println!("[WHERE HEURISTIC] Preferring dynamic input {} (shape {:?}) over trivial constant {:?}", inputs[1], a_shape, b_vals);
+                            a_shape.cloned()
+                        } else {
+                            Some(b_vals.clone())
+                        }
+                    } else {
+                        None
+                    }
+                } else if let (Some(a_vals), None) = (a_const, b_const) {
+                    if is_trivial_constant(a_vals) {
+                        b_shape.cloned()
+                    } else {
+                        None
+                    }
+                } else if let (None, Some(b_vals)) = (a_const, b_const) {
+                    if is_trivial_constant(b_vals) {
+                        a_shape.cloned()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                // Set both const_values and value_shapes for the output
+                if let Some(values) = preferred_values {
+                    let out_name = outputs[0].to_string();
+                    let shape = if values.len() == 1 {
+                        Vec::new()
+                    } else {
+                        vec![values.len() as i64]
+                    };
+                    const_values.insert(out_name.clone(), values);
+                    value_shapes.insert(out_name, shape);
+                }
+            }
             continue;
         }
 
@@ -1924,14 +1932,15 @@ fn fold_shape_constants(
             ) {
                 let out = out.to_string();
                 if let Some(shape) = value_shapes.get(inp).cloned() {
-                if !options.require_positive_dims || shape.iter().all(|d| *d > 0) {
+                    if !options.require_positive_dims || shape.iter().all(|d| *d > 0) {
                         // Propagate dynamic dim metadata: Shape output is a 1-D
                         // tensor whose elements correspond to input dimensions.
                         if options.experimental_dynamic_inputs {
                             let inp_s = inp.to_string();
-                            if let Some(dims) = value_shape_dims.get(&inp_s).or_else(|| {
-                                value_shape_dims.get(&sanitize_identifier(&inp_s))
-                            }) {
+                            if let Some(dims) = value_shape_dims
+                                .get(&inp_s)
+                                .or_else(|| value_shape_dims.get(&sanitize_identifier(&inp_s)))
+                            {
                                 // Each element of the Shape output corresponds to one
                                 // input dimension.  Build a 1-D dim vector where
                                 // dynamic input dims become Dynamic elements.
@@ -1981,9 +1990,7 @@ fn fold_shape_constants(
                         let data_dims = if options.experimental_dynamic_inputs {
                             value_shape_dims
                                 .get(data_name)
-                                .or_else(|| {
-                                    value_shape_dims.get(&sanitize_identifier(data_name))
-                                })
+                                .or_else(|| value_shape_dims.get(&sanitize_identifier(data_name)))
                                 .cloned()
                         } else {
                             None
@@ -2042,10 +2049,8 @@ fn fold_shape_constants(
                             fold_binary_const_i64(op_type, a, b, &a_shape, &b_shape)
                         {
                             if options.experimental_dynamic_inputs {
-                                let a_dims =
-                                    value_shape_dims_for(a_name, &value_shape_dims);
-                                let b_dims =
-                                    value_shape_dims_for(b_name, &value_shape_dims);
+                                let a_dims = value_shape_dims_for(a_name, &value_shape_dims);
+                                let b_dims = value_shape_dims_for(b_name, &value_shape_dims);
                                 if let Some(out_dims) = fold_binary_dynamic_dims(
                                     op_type, a, b, &a_shape, &b_shape, a_dims, b_dims,
                                 ) {
@@ -2096,6 +2101,28 @@ fn fold_shape_constants(
                     }
                 }
             }
+        } else if op_type == "Cast" {
+            if let (Some(inp), Some(out)) = (
+                node.input.as_slice().first(),
+                node.output.as_slice().first(),
+            ) {
+                if let Some(values) = const_values.get(inp.as_str()).cloned() {
+                    const_values.insert(out.to_string(), values);
+                    if let Some(shape) = value_shapes.get(inp.as_str()).cloned() {
+                        value_shapes.insert(out.to_string(), shape.clone());
+                        value_shapes.insert(sanitize_identifier(out), shape);
+                    }
+                    if let Some(to_type) = node
+                        .attribute
+                        .as_slice()
+                        .iter()
+                        .find(|a| a.name.as_str() == "to" && a.i != 0)
+                        .and_then(|a| map_onnx_data_type(a.i as i32).ok())
+                    {
+                        value_types.insert(out.to_string(), to_type);
+                    }
+                }
+            }
         } else if op_type == "Range" {
             if node.input.as_slice().len() == 3 {
                 if let (Some(start_name), Some(limit_name), Some(delta_name)) = (
@@ -2104,14 +2131,11 @@ fn fold_shape_constants(
                     node.input.as_slice().get(2),
                 ) {
                     if options.experimental_dynamic_inputs {
-                        let start_dim = dynamic_scalar_dimension_for_value(
-                            start_name,
-                            &value_shape_dims,
-                        );
-                        if let Some(limit_dim) = dynamic_scalar_dimension_for_value(
-                            limit_name,
-                            &value_shape_dims,
-                        ) {
+                        let start_dim =
+                            dynamic_scalar_dimension_for_value(start_name, &value_shape_dims);
+                        if let Some(limit_dim) =
+                            dynamic_scalar_dimension_for_value(limit_name, &value_shape_dims)
+                        {
                             if let (Some(start_vals), Some(delta_vals), Some(out)) = (
                                 const_values.get(start_name),
                                 const_values.get(delta_name),
@@ -2131,12 +2155,9 @@ fn fold_shape_constants(
                                             out.to_string(),
                                             vec![Dimension::Dynamic(range_dim.clone())],
                                         );
-                                        value_shapes
-                                            .insert(out.to_string(), out_shape.clone());
-                                        value_shapes
-                                            .insert(sanitize_identifier(out), out_shape);
-                                        value_types
-                                            .insert(out.to_string(), DataType::Int64);
+                                        value_shapes.insert(out.to_string(), out_shape.clone());
+                                        value_shapes.insert(sanitize_identifier(out), out_shape);
+                                        value_types.insert(out.to_string(), DataType::Int64);
                                     }
                                 }
                             }
@@ -2230,6 +2251,35 @@ fn fold_shape_constants(
                     .map(|a| a.i)
                     .unwrap_or(0);
 
+                if options.experimental_dynamic_inputs && (axis == 0 || axis == -1) {
+                    let mut concat_dims: Vec<rustnn::graph::Dimension> = Vec::new();
+                    let mut all_dims = true;
+                    for inp in node.input.as_slice() {
+                        if let Some(dims) =
+                            value_shape_dims_for_input(graph, inp.as_str(), value_shape_dims)
+                        {
+                            concat_dims.extend(dims.iter().cloned());
+                        } else if let Some(vals) =
+                            const_values_for_input(graph, inp.as_str(), const_values)
+                        {
+                            for v in vals {
+                                if let Ok(v) = u32::try_from(v) {
+                                    concat_dims.push(rustnn::graph::Dimension::Static(v));
+                                } else {
+                                    all_dims = false;
+                                    break;
+                                }
+                            }
+                        } else {
+                            all_dims = false;
+                            break;
+                        }
+                    }
+                    if all_dims && !concat_dims.is_empty() {
+                        value_shape_dims.insert(out.to_string(), concat_dims);
+                    }
+                }
+
                 if all_const && (axis == 0 || axis == -1) {
                     if out.contains("rotary") && out.contains("Where") {
                         crate::debug_println!(
@@ -2256,8 +2306,7 @@ fn fold_shape_constants(
                                 const_values_for_input(graph, inp.as_str(), const_values)
                             {
                                 for v in vals {
-                                    concat_dims
-                                        .push(rustnn::graph::Dimension::Static(v as u32));
+                                    concat_dims.push(rustnn::graph::Dimension::Static(v as u32));
                                 }
                             }
                         }
@@ -2316,8 +2365,7 @@ fn fold_shape_constants(
                             }
                             // Force the correct shape - ConstantOfShape creates exact output shape
                             value_shapes.insert(out.to_string(), shape_vals.clone());
-                            value_shapes
-                                .insert(sanitize_identifier(out), shape_vals.clone());
+                            value_shapes.insert(sanitize_identifier(out), shape_vals.clone());
                             value_types.insert(out.to_string(), fill_dtype);
                         }
                     }
@@ -2387,8 +2435,7 @@ fn fold_shape_constants(
                         } else {
                             None
                         }
-                    } else if let (Some(a_dims), Some(b_dims)) =
-                        (a_dims.as_ref(), b_dims.as_ref())
+                    } else if let (Some(a_dims), Some(b_dims)) = (a_dims.as_ref(), b_dims.as_ref())
                     {
                         let a_has_dynamic =
                             a_dims.iter().any(|d| matches!(d, Dimension::Dynamic(_)));
@@ -2398,10 +2445,7 @@ fn fold_shape_constants(
                             Some(a_dims.clone())
                         } else if b_has_dynamic && !a_has_dynamic {
                             Some(b_dims.clone())
-                        } else if a_has_dynamic
-                            && b_has_dynamic
-                            && a_dims.len() == b_dims.len()
-                        {
+                        } else if a_has_dynamic && b_has_dynamic && a_dims.len() == b_dims.len() {
                             Some(
                                 a_dims
                                     .iter()
@@ -2494,7 +2538,6 @@ fn read_int_tensor(tensor: &TensorProto) -> Vec<i64> {
     }
 }
 
-
 /// Options for extended shape propagation during ONNX lowering.
 #[derive(Debug, Clone, Copy)]
 pub struct PropagateOptions {
@@ -2512,129 +2555,132 @@ pub fn propagate_shapes_and_fold_constants(
     value_shape_dims: &mut HashMap<String, Vec<Dimension>>,
     options: &PropagateOptions,
 ) {
-// Propagate shapes and fold constant shape expressions in a few passes
-for _ in 0..3 {
-    if options.optimize {
-        let max_iterations = 10;
-        for iteration in 0..max_iterations {
-            let initial_count = value_shapes.len();
+    // Propagate shapes and fold constant shape expressions in a few passes
+    for _ in 0..3 {
+        if options.optimize {
+            let max_iterations = 10;
+            for iteration in 0..max_iterations {
+                let initial_count = value_shapes.len();
 
-            for onnx_node in graph.node.as_slice() {
-                let all_outputs_known = onnx_node
-                    .output
-                    .as_slice()
-                    .iter()
-                    .all(|out| value_shapes.contains_key(out.as_str()));
-                if all_outputs_known {
-                    continue;
-                }
+                for onnx_node in graph.node.as_slice() {
+                    let all_outputs_known = onnx_node
+                        .output
+                        .as_slice()
+                        .iter()
+                        .all(|out| value_shapes.contains_key(out.as_str()));
+                    if all_outputs_known {
+                        continue;
+                    }
 
-                if let Some(inferred) =
-                    infer_node_output_shape(onnx_node, &value_shapes, &initializers, &const_values)
-                {
-                    if let Some(output_name) = onnx_node.output.as_slice().first() {
-                        // Debug: track shape changes for layer 15 operations
-                        if output_name.contains("layers_15_self_attn")
-                            && (output_name.contains("Reshape")
-                                || output_name.contains("Transpose"))
-                        {
-                            crate::debug_println!(
-                                "[SHAPE DEBUG] {} {} -> {:?}",
-                                onnx_node.op_type.as_str(),
-                                output_name,
-                                inferred
-                            );
+                    if let Some(inferred) = infer_node_output_shape(
+                        onnx_node,
+                        &value_shapes,
+                        &initializers,
+                        &const_values,
+                    ) {
+                        if let Some(output_name) = onnx_node.output.as_slice().first() {
+                            // Debug: track shape changes for layer 15 operations
+                            if output_name.contains("layers_15_self_attn")
+                                && (output_name.contains("Reshape")
+                                    || output_name.contains("Transpose"))
+                            {
+                                crate::debug_println!(
+                                    "[SHAPE DEBUG] {} {} -> {:?}",
+                                    onnx_node.op_type.as_str(),
+                                    output_name,
+                                    inferred
+                                );
+                            }
+                            // Force the correct shape - shape inference computes exact output shape
+                            value_shapes.insert(output_name.to_string(), inferred);
                         }
-                        // Force the correct shape - shape inference computes exact output shape
-                        value_shapes.insert(output_name.to_string(), inferred);
                     }
                 }
-            }
 
-            if value_shapes.len() == initial_count {
-                break;
-            }
+                if value_shapes.len() == initial_count {
+                    break;
+                }
 
-            if iteration == max_iterations - 1 {
-                crate::debug_println!(
-                    "Warning: Shape propagation reached max iterations ({}/{})",
-                    value_shapes.len(),
-                    graph.node.as_slice().len()
-                );
-            }
-        }
-    }
-
-    // If we know the input_ids shape (batch, seq), upgrade any lone hidden-dim
-    // tensors (length-1 shapes) to [batch, seq, hidden] to unblock downstream
-    // matmul/reshape resolution in decoder graphs that lost batch/seq dims.
-    if let Some(ids_shape) = value_shapes.get("input_ids") {
-        if ids_shape.len() == 2 {
-            let (batch, seq) = (ids_shape[0], ids_shape[1]);
-            let upgrades: Vec<(String, Vec<i64>)> = value_shapes
-                .iter()
-                .filter_map(|(k, v)| {
-                    if v.len() == 1 && v[0] > 1 {
-                        Some((k.clone(), vec![batch, seq, v[0]]))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            for (k, v) in upgrades {
-                value_shapes.insert(k, v);
+                if iteration == max_iterations - 1 {
+                    crate::debug_println!(
+                        "Warning: Shape propagation reached max iterations ({}/{})",
+                        value_shapes.len(),
+                        graph.node.as_slice().len()
+                    );
+                }
             }
         }
-    }
 
-    crate::debug_println!(
-        "[debug] layer_norm shape {:?}",
-        value_shapes.get("/decoder/block.0/layer.0/layer_norm/Mul_1_output_0")
-    );
-    crate::debug_println!(
-        "[debug] matmul q shape {:?}",
-        value_shapes.get("/decoder/block.0/layer.0/SelfAttention/q/MatMul_output_0")
-    );
-    crate::debug_println!(
-        "[debug] input_ids shape {:?}",
-        value_shapes.get("input_ids")
-    );
-    crate::debug_println!(
-        "[debug] ln div shape {:?}",
-        value_shapes.get("/decoder/block.0/layer.0/layer_norm/Div_output_0")
-    );
+        // If we know the input_ids shape (batch, seq), upgrade any lone hidden-dim
+        // tensors (length-1 shapes) to [batch, seq, hidden] to unblock downstream
+        // matmul/reshape resolution in decoder graphs that lost batch/seq dims.
+        if let Some(ids_shape) = value_shapes.get("input_ids") {
+            if ids_shape.len() == 2 {
+                let (batch, seq) = (ids_shape[0], ids_shape[1]);
+                let upgrades: Vec<(String, Vec<i64>)> = value_shapes
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        if v.len() == 1 && v[0] > 1 {
+                            Some((k.clone(), vec![batch, seq, v[0]]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                for (k, v) in upgrades {
+                    value_shapes.insert(k, v);
+                }
+            }
+        }
 
-    let consts_before = const_values.len();
+        crate::debug_println!(
+            "[debug] layer_norm shape {:?}",
+            value_shapes.get("/decoder/block.0/layer.0/layer_norm/Mul_1_output_0")
+        );
+        crate::debug_println!(
+            "[debug] matmul q shape {:?}",
+            value_shapes.get("/decoder/block.0/layer.0/SelfAttention/q/MatMul_output_0")
+        );
+        crate::debug_println!(
+            "[debug] input_ids shape {:?}",
+            value_shapes.get("input_ids")
+        );
+        crate::debug_println!(
+            "[debug] ln div shape {:?}",
+            value_shapes.get("/decoder/block.0/layer.0/layer_norm/Div_output_0")
+        );
 
-    // DEBUG: Check value before propagation
-    if let Some(val) = const_values.get("/model/rotary_emb/Where_output_0") {
-        crate::debug_println!("[PROP BEFORE] /model/rotary_emb/Where_output_0 = {:?}", val);
-    }
+        let consts_before = const_values.len();
 
-    let fold_opts = FoldShapeConstantsOptions::from_propagate(options);
-    if options.experimental_dynamic_inputs {
-        propagate_dynamic_dims_metadata(graph, value_shape_dims);
-    }
-    if fold_shape_constants(
-        graph,
-        value_shapes,
-        value_types,
-        const_values,
-        value_shape_dims,
-        &fold_opts,
-    ) {
-        // at least one node folded this pass
-    }
+        // DEBUG: Check value before propagation
+        if let Some(val) = const_values.get("/model/rotary_emb/Where_output_0") {
+            crate::debug_println!("[PROP BEFORE] /model/rotary_emb/Where_output_0 = {:?}", val);
+        }
 
-    if const_values.len() == consts_before {
-        break;
-    }
+        let fold_opts = FoldShapeConstantsOptions::from_propagate(options);
+        if options.experimental_dynamic_inputs {
+            propagate_dynamic_dims_metadata(graph, value_shape_dims);
+        }
+        if fold_shape_constants(
+            graph,
+            value_shapes,
+            value_types,
+            const_values,
+            value_shape_dims,
+            &fold_opts,
+        ) {
+            // at least one node folded this pass
+        }
 
-    // DEBUG: Check value after propagation pass
-    if let Some(val) = const_values.get("/model/rotary_emb/Where_output_0") {
-        crate::debug_println!("[PROP AFTER] /model/rotary_emb/Where_output_0 = {:?}", val);
+        if const_values.len() == consts_before {
+            break;
+        }
+
+        // DEBUG: Check value after propagation pass
+        if let Some(val) = const_values.get("/model/rotary_emb/Where_output_0") {
+            crate::debug_println!("[PROP AFTER] /model/rotary_emb/Where_output_0 = {:?}", val);
+        }
     }
-}
 }
 
 #[cfg(test)]

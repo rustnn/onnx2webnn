@@ -18,7 +18,6 @@
 
 // Utility operators: Shape, Gather, Slice
 
-use rustnn::DataType;
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::builder_helpers::{
     ast_dims_to_mldim, expand_with_shape, i64_starts_as_u32, output_label, record_node_output,
@@ -29,7 +28,10 @@ use crate::onnx::ops::{
     normalize_axis_best_effort, ConversionContext, ConversionResult, OpHandler,
 };
 use crate::protos::onnx::NodeProto;
-use rustnn::operator_options::{MLDimension, MLDynamicDimension, MLGatherOptions, MLTriangularOptions};
+use rustnn::operator_options::{
+    MLDimension, MLDynamicDimension, MLGatherOptions, MLReverseOptions, MLTriangularOptions,
+};
+use rustnn::DataType;
 
 pub struct UtilityHandler;
 
@@ -61,7 +63,7 @@ impl OpHandler for UtilityHandler {
             "ConstantOfShape" => self.convert_constant_of_shape(node, &node_name, context, b),
             "Range" => self.convert_range(node, &node_name, context, b),
             "Trilu" => self.convert_trilu(node, &node_name, context, b),
-            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -211,7 +213,6 @@ impl UtilityHandler {
         let start = self.scalar_as_i64(&inputs[0], context);
         let limit = self.scalar_as_i64(&inputs[1], context);
         let delta = self.scalar_as_i64(&inputs[2], context);
-
         let start_dim = crate::onnx::shape_inference::dynamic_scalar_dimension_for_value(
             &inputs[0],
             context.value_shape_dims,
@@ -602,12 +603,7 @@ impl UtilityHandler {
                 _ => fill_value_i64.to_le_bytes().to_vec(),
             };
             let scalar_name = format!("{}_fill", output_name);
-            b.register_constant_from_bytes(
-                &scalar_name,
-                dtype.clone(),
-                &[1],
-                &scalar_bytes,
-            )?;
+            b.register_constant_from_bytes(&scalar_name, dtype.clone(), &[1], &scalar_bytes)?;
 
             let scalar = b.resolve_operand(&scalar_name)?;
             let out = expand_with_shape(b, scalar, &output_name, ast_dims_to_mldim(dims))?;
@@ -737,6 +733,7 @@ impl UtilityHandler {
 
         let output_name = output_label(node, node_name);
         let mut slice_params: Option<(Vec<u32>, Vec<MLDimension>)> = None;
+        let mut reverse_axes: Vec<u32> = Vec::new();
 
         let read_ints = |name: &str, context: &ConversionContext| -> Option<Vec<i64>> {
             if let Some(vals) = context.const_values.get(name) {
@@ -915,12 +912,26 @@ impl UtilityHandler {
 
                 for i in 0..desired_len {
                     let axis = axes[i] as usize;
+                    if axis >= rank {
+                        return Err(OnnxError::InvalidShape(format!(
+                            "Slice axis {} is out of bounds for rank {} input '{}'",
+                            axes[i], rank, inputs[0]
+                        )));
+                    }
                     let dim = input_shape[axis];
                     let step = steps[i];
                     if step <= 0 {
-                        return Err(OnnxError::InvalidShape(
-                            "Slice currently requires positive step values".to_string(),
-                        ));
+                        if step == -1 && starts_norm[i] == -1 && ends_norm[i] < -dim {
+                            dense_starts[axis] = 0;
+                            dense_sizes[axis] = dim;
+                            dense_strides[axis] = 1;
+                            reverse_axes.push(axis as u32);
+                            continue;
+                        }
+                        return Err(OnnxError::InvalidShape(format!(
+                            "Slice {} on input '{}' currently requires positive step values, got {}",
+                            node_name, inputs[0], step
+                        )));
                     }
 
                     let mut start = starts_norm[i];
@@ -962,10 +973,10 @@ impl UtilityHandler {
                     slice_sizes_from_i64(&dense_sizes, &dynamic_size_info)?,
                 ));
             } else {
-                return Err(OnnxError::InvalidShape(
-                    "Slice on unknown-rank tensors requires known input shape for WebNN"
-                        .to_string(),
-                ));
+                return Err(OnnxError::InvalidShape(format!(
+                    "Slice {} on unknown-rank input '{}' requires known input shape for WebNN",
+                    node_name, inputs[0]
+                )));
             }
         } else {
             // Extract from attributes (older opset)
@@ -1025,9 +1036,17 @@ impl UtilityHandler {
                     let dim = input_shape[axis];
                     let step = steps[i];
                     if step <= 0 {
-                        return Err(OnnxError::InvalidShape(
-                            "Slice currently requires positive step values".to_string(),
-                        ));
+                        if step == -1 && starts[i] == -1 && ends[i] < -dim {
+                            dense_starts[axis] = 0;
+                            dense_sizes[axis] = dim;
+                            dense_strides[axis] = 1;
+                            reverse_axes.push(axis as u32);
+                            continue;
+                        }
+                        return Err(OnnxError::InvalidShape(format!(
+                            "Slice {} on input '{}' currently requires positive step values, got {}",
+                            node_name, inputs[0], step
+                        )));
                     }
 
                     let mut start = starts[i];
@@ -1067,7 +1086,20 @@ impl UtilityHandler {
             )
         })?;
         let input = b.resolve_operand(&inputs[0])?;
-        let out = slice_with_params(b, input, &output_name, &starts, &sizes)?;
+        let mut out = slice_with_params(b, input, &output_name, &starts, &sizes)?;
+        if !reverse_axes.is_empty() {
+            let reverse_label = format!("{}_reverse", output_name);
+            out = b
+                .builder
+                .reverse_with_options(
+                    out,
+                    MLReverseOptions {
+                        label: reverse_label,
+                        axes: Some(reverse_axes),
+                    },
+                )
+                .map_err(map_op_error)?;
+        }
         if let Some(output) = node.output.as_slice().first() {
             record_node_output(b, output, &output_name, out);
         }
@@ -1087,8 +1119,8 @@ impl UtilityHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustnn::DataType;
     use crate::protos::onnx::{AttributeProto, NodeProto, TensorProto, TensorProto_DataType};
+    use rustnn::DataType;
     fn create_test_node(op_type: &str, inputs: Vec<&str>, outputs: Vec<&str>) -> NodeProto {
         NodeProto {
             op_type: op_type.to_string(),
@@ -1316,7 +1348,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("output"), Some(&DataType::Float32));
     }
 
@@ -1339,7 +1372,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("y"), Some(&DataType::Float32));
     }
 
@@ -1364,7 +1398,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("y"), Some(&DataType::Float16));
     }
 }

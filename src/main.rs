@@ -129,9 +129,11 @@ fn main() -> anyhow::Result<()> {
                 free_dim_overrides,
                 optimize,
                 experimental_dynamic_inputs,
+                external_data_dir: None,
             };
 
-            let _validated = convert_onnx(input_path.to_str().unwrap(), options).map_err(|e| anyhow::anyhow!("{e}"))?;
+            let _validated = convert_onnx(input_path.to_str().unwrap(), options)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
             eprintln!("✓ ORT graph build succeeded for {}", input);
         }
     }

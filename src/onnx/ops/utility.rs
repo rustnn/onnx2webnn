@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-// Utility operators: Shape, Gather, Slice
+// Utility operators: Shape, Gather, GatherND, GatherElements, ReverseSequence, Slice
 
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::builder_helpers::{
@@ -29,7 +29,7 @@ use crate::onnx::ops::{
 };
 use crate::protos::onnx::NodeProto;
 use rustnn::operator_options::{
-    MLDimension, MLDynamicDimension, MLGatherOptions, MLTriangularOptions,
+    MLDimension, MLDynamicDimension, MLGatherOptions, MLReverseOptions, MLTriangularOptions,
 };
 use rustnn::DataType;
 
@@ -39,7 +39,15 @@ impl OpHandler for UtilityHandler {
     fn supports(&self, op_type: &str) -> bool {
         matches!(
             op_type,
-            "Shape" | "Gather" | "Slice" | "ConstantOfShape" | "Range" | "Trilu"
+            "Shape"
+                | "Gather"
+                | "GatherND"
+                | "GatherElements"
+                | "ReverseSequence"
+                | "Slice"
+                | "ConstantOfShape"
+                | "Range"
+                | "Trilu"
         )
     }
 
@@ -59,6 +67,9 @@ impl OpHandler for UtilityHandler {
         match op_type {
             "Shape" => self.convert_shape(node, &node_name, b),
             "Gather" => self.convert_gather(node, &node_name, context, b),
+            "GatherND" => self.convert_gather_nd(node, &node_name, context, b),
+            "GatherElements" => self.convert_gather_elements(node, &node_name, context, b),
+            "ReverseSequence" => self.convert_reverse_sequence(node, &node_name, context, b),
             "Slice" => self.convert_slice(node, &node_name, context, b),
             "ConstantOfShape" => self.convert_constant_of_shape(node, &node_name, context, b),
             "Range" => self.convert_range(node, &node_name, context, b),
@@ -700,6 +711,160 @@ impl UtilityHandler {
         let out = b
             .builder
             .gather_with_options(data, indices, opts)
+            .map_err(map_op_error)?;
+        if let Some(output) = node.output.as_slice().first() {
+            record_node_output(b, output, &output_name, out);
+        }
+        let mut result = ConversionResult::default();
+        if let Some(output) = node.output.as_slice().first() {
+            if let Some(dtype) = context.value_types.get(&inputs[0]) {
+                result
+                    .output_types
+                    .insert(output.to_string(), dtype.clone());
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Convert ONNX GatherND to WebNN gatherND.
+    ///
+    /// `batch_dims` is ignored for now (WebNN gatherND has no batch-dimension option).
+    fn convert_gather_nd(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "GatherND expects 2 inputs (data, indices), got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_label(node, node_name);
+        let data = b.resolve_operand(&inputs[0])?;
+        let indices = b.resolve_operand(&inputs[1])?;
+        let opts = OnnxBuilder::labeled_options(&output_name);
+        let out = b
+            .builder
+            .gather_nd_with_options(data, indices, opts)
+            .map_err(map_op_error)?;
+        if let Some(output) = node.output.as_slice().first() {
+            record_node_output(b, output, &output_name, out);
+        }
+        let mut result = ConversionResult::default();
+        if let Some(output) = node.output.as_slice().first() {
+            if let Some(dtype) = context.value_types.get(&inputs[0]) {
+                result
+                    .output_types
+                    .insert(output.to_string(), dtype.clone());
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Convert ONNX GatherElements to WebNN gatherElements.
+    fn convert_gather_elements(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "GatherElements expects 2 inputs (data, indices), got {}",
+                inputs.len()
+            )));
+        }
+
+        let mut axis = 0i64;
+        for attr in node.attribute.as_slice() {
+            if attr.name.as_str() == "axis" && attr.i != 0 {
+                axis = attr.i;
+            }
+        }
+
+        let output_name = output_label(node, node_name);
+        let axis = if let Some(rank) = context.input_rank(inputs[0].as_str()) {
+            normalize_axis_best_effort(axis, rank)
+        } else {
+            axis
+        };
+        let data = b.resolve_operand(&inputs[0])?;
+        let indices = b.resolve_operand(&inputs[1])?;
+        let opts = MLGatherOptions {
+            label: output_name.clone(),
+            axis: axis as u32,
+        };
+        let out = b
+            .builder
+            .gather_elements_with_options(data, indices, opts)
+            .map_err(map_op_error)?;
+        if let Some(output) = node.output.as_slice().first() {
+            record_node_output(b, output, &output_name, out);
+        }
+        let mut result = ConversionResult::default();
+        if let Some(output) = node.output.as_slice().first() {
+            if let Some(dtype) = context.value_types.get(&inputs[0]) {
+                result
+                    .output_types
+                    .insert(output.to_string(), dtype.clone());
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Convert ONNX ReverseSequence to WebNN reverse along `time_axis`.
+    ///
+    /// `sequence_lens` is accepted as the second input but not used yet — WebNN `reverse`
+    /// reverses the full axis and has no per-sequence length support.
+    fn convert_reverse_sequence(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "ReverseSequence expects 2 inputs (data, sequence_lens), got {}",
+                inputs.len()
+            )));
+        }
+
+        let mut _batch_axis = 1i64;
+        let mut time_axis = 0i64;
+        for attr in node.attribute.as_slice() {
+            match attr.name.as_str() {
+                "batch_axis" => _batch_axis = attr.i,
+                "time_axis" => time_axis = attr.i,
+                _ => {}
+            }
+        }
+
+        let output_name = output_label(node, node_name);
+        let time_axis = if let Some(rank) = context.input_rank(inputs[0].as_str()) {
+            normalize_axis_best_effort(time_axis, rank)
+        } else {
+            time_axis
+        };
+        let input = b.resolve_operand(&inputs[0])?;
+        let opts = MLReverseOptions {
+            label: output_name.clone(),
+            axes: Some(vec![time_axis as u32]),
+        };
+        let out = b
+            .builder
+            .reverse_with_options(input, opts)
             .map_err(map_op_error)?;
         if let Some(output) = node.output.as_slice().first() {
             record_node_output(b, output, &output_name, out);

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Normalization operators: LayerNormalization, Softmax
+// Normalization operators: BatchNormalization, InstanceNormalization, LayerNormalization, Softmax
 
 use crate::onnx::builder::{map_op_error, operand_index, OnnxBuilder};
 use crate::onnx::builder_helpers::{output_label, record_node_output};
@@ -13,13 +13,18 @@ use crate::onnx::ops::{
     normalize_axis_best_effort, ConversionContext, ConversionResult, OpHandler,
 };
 use crate::protos::onnx::NodeProto;
-use rustnn::operator_options::MLLayerNormalizationOptions;
+use rustnn::operator_options::{
+    MLBatchNormalizationOptions, MLInstanceNormalizationOptions, MLLayerNormalizationOptions,
+};
 
 pub struct NormalizationHandler;
 
 impl OpHandler for NormalizationHandler {
     fn supports(&self, op_type: &str) -> bool {
-        matches!(op_type, "LayerNormalization" | "Softmax")
+        matches!(
+            op_type,
+            "BatchNormalization" | "InstanceNormalization" | "LayerNormalization" | "Softmax"
+        )
     }
 
     fn convert(
@@ -36,6 +41,10 @@ impl OpHandler for NormalizationHandler {
         };
 
         match op_type {
+            "BatchNormalization" => self.convert_batch_normalization(node, &node_name, context, b),
+            "InstanceNormalization" => {
+                self.convert_instance_normalization(node, &node_name, context, b)
+            }
             "LayerNormalization" => self.convert_layer_norm(node, &node_name, context, b),
             "Softmax" => self.convert_softmax(node, &node_name, context, b),
             _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
@@ -44,6 +53,136 @@ impl OpHandler for NormalizationHandler {
 }
 
 impl NormalizationHandler {
+    fn convert_batch_normalization(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 5 {
+            return Err(OnnxError::InvalidShape(format!(
+                "BatchNormalization expects 5 inputs, got {}",
+                inputs.len()
+            )));
+        }
+
+        let mut epsilon = 1e-5f64;
+        let mut axis = 1i64;
+        let mut training_mode = 0i64;
+        for attr in node.attribute.as_slice() {
+            match attr.name.as_str() {
+                "epsilon" if attr.f != 0.0 => epsilon = attr.f as f64,
+                "axis" => axis = attr.i,
+                "training_mode" => training_mode = attr.i,
+                _ => {}
+            }
+        }
+        if training_mode != 0 {
+            return Err(OnnxError::InvalidShape(
+                "BatchNormalization training_mode != 0 is unsupported".to_string(),
+            ));
+        }
+
+        let output_name = output_label(node, node_name);
+        let input = b.resolve_operand(&inputs[0])?;
+        let mean = b.resolve_operand(&inputs[3])?;
+        let variance = b.resolve_operand(&inputs[4])?;
+
+        let scale = if !inputs[1].is_empty() {
+            Some(operand_index(b.resolve_operand(&inputs[1])?))
+        } else {
+            None
+        };
+        let bias = if !inputs[2].is_empty() {
+            Some(operand_index(b.resolve_operand(&inputs[2])?))
+        } else {
+            None
+        };
+
+        let axis = if let Some(rank) = context.input_rank(inputs[0].as_str()) {
+            normalize_axis_best_effort(axis, rank) as u32
+        } else {
+            axis as u32
+        };
+
+        let opts = MLBatchNormalizationOptions {
+            label: output_name.clone(),
+            scale,
+            bias,
+            axis,
+            epsilon,
+        };
+        let out = b
+            .builder
+            .batch_normalization_with_options(input, mean, variance, opts)
+            .map_err(map_op_error)?;
+
+        if let Some(onnx_out) = node.output.first() {
+            record_node_output(b, onnx_out, &output_name, out);
+        } else {
+            b.record_operand(&[&output_name], out);
+        }
+        Ok(ConversionResult::default())
+    }
+
+    fn convert_instance_normalization(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        _context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.is_empty() {
+            return Err(OnnxError::InvalidShape(
+                "InstanceNormalization expects at least 1 input".to_string(),
+            ));
+        }
+
+        let mut epsilon = 1e-5f64;
+        for attr in node.attribute.as_slice() {
+            if attr.name.as_str() == "epsilon" && attr.f != 0.0 {
+                epsilon = attr.f as f64;
+            }
+        }
+
+        let output_name = output_label(node, node_name);
+        let input = b.resolve_operand(&inputs[0])?;
+        let scale = inputs
+            .get(1)
+            .filter(|name| !name.is_empty())
+            .map(|name| b.resolve_operand(name))
+            .transpose()?
+            .map(operand_index);
+        let bias = inputs
+            .get(2)
+            .filter(|name| !name.is_empty())
+            .map(|name| b.resolve_operand(name))
+            .transpose()?
+            .map(operand_index);
+
+        let opts = MLInstanceNormalizationOptions {
+            label: output_name.clone(),
+            scale,
+            bias,
+            epsilon,
+            layout: String::new(),
+        };
+        let out = b
+            .builder
+            .instance_normalization_with_options(input, opts)
+            .map_err(map_op_error)?;
+
+        if let Some(onnx_out) = node.output.first() {
+            record_node_output(b, onnx_out, &output_name, out);
+        } else {
+            b.record_operand(&[&output_name], out);
+        }
+        Ok(ConversionResult::default())
+    }
+
     fn convert_layer_norm(
         &self,
         node: &NodeProto,

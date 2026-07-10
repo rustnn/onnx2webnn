@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Type conversion and constant operators: Cast, Constant
+// Type conversion and constant operators: Cast, Constant, QuantizeLinear, DequantizeLinear
 
 use crate::onnx::builder::{
     map_onnx_tensor_type, map_op_error, tensor_proto_to_bytes, OnnxBuilder,
@@ -13,18 +13,22 @@ use crate::onnx::builder_helpers::{output_label, record_node_output};
 use crate::onnx::convert::OnnxError;
 use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
 use crate::protos::onnx::NodeProto;
+use rustnn::mlcontext::MLOperand;
 
 pub struct ConversionHandler;
 
 impl OpHandler for ConversionHandler {
     fn supports(&self, op_type: &str) -> bool {
-        matches!(op_type, "Cast" | "Constant")
+        matches!(
+            op_type,
+            "Cast" | "Constant" | "QuantizeLinear" | "DequantizeLinear"
+        )
     }
 
     fn convert(
         &self,
         node: &NodeProto,
-        _context: &ConversionContext,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let op_type = node.op_type.as_str();
@@ -37,6 +41,8 @@ impl OpHandler for ConversionHandler {
         match op_type {
             "Cast" => self.convert_cast(node, &node_name, b),
             "Constant" => self.convert_constant(node, &node_name, b),
+            "QuantizeLinear" => self.convert_quantize_linear(node, &node_name, context, b),
+            "DequantizeLinear" => self.convert_dequantize_linear(node, &node_name, context, b),
             _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
@@ -114,6 +120,174 @@ impl ConversionHandler {
         b.register_constant_from_bytes(onnx_out, data_type, &shape, &bytes)?;
         Ok(ConversionResult::default())
     }
+
+    fn convert_quantize_linear(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "QuantizeLinear expects at least 2 inputs, got {}",
+                inputs.len()
+            )));
+        }
+
+        if parse_quantize_axis(node) != 1 {
+            return Err(OnnxError::unsupported_op("QuantizeLinear", node_name));
+        }
+
+        let x_name = &inputs[0];
+        let scale_name = &inputs[1];
+        validate_quantize_scale_shape(x_name, scale_name, context, node_name)?;
+
+        let output_name = output_label(node, node_name);
+        let x = b.resolve_operand(x_name)?;
+        let scale = b.resolve_operand(scale_name)?;
+        let out = emit_quantize_linear(b, x, scale, inputs.get(2), &output_name)?;
+
+        if let Some(onnx_out) = node.output.first() {
+            record_node_output(b, onnx_out, &output_name, out);
+        } else {
+            b.record_operand(&[&output_name], out);
+        }
+        Ok(ConversionResult::default())
+    }
+
+    fn convert_dequantize_linear(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "DequantizeLinear expects at least 2 inputs, got {}",
+                inputs.len()
+            )));
+        }
+
+        if parse_quantize_axis(node) != 1 {
+            return Err(OnnxError::unsupported_op("DequantizeLinear", node_name));
+        }
+
+        let x_name = &inputs[0];
+        let scale_name = &inputs[1];
+        validate_quantize_scale_shape(x_name, scale_name, context, node_name)?;
+
+        let output_name = output_label(node, node_name);
+        let x = b.resolve_operand(x_name)?;
+        let scale = b.resolve_operand(scale_name)?;
+        let out = emit_dequantize_linear(b, x, scale, inputs.get(2), &output_name)?;
+
+        if let Some(onnx_out) = node.output.first() {
+            record_node_output(b, onnx_out, &output_name, out);
+        } else {
+            b.record_operand(&[&output_name], out);
+        }
+        Ok(ConversionResult::default())
+    }
+}
+
+fn parse_quantize_axis(node: &NodeProto) -> i64 {
+    let mut axis = 1i64;
+    for attr in node.attribute.as_slice() {
+        if attr.name.as_str() == "axis" {
+            axis = attr.i;
+        }
+    }
+    axis
+}
+
+fn validate_quantize_scale_shape(
+    x_name: &str,
+    scale_name: &str,
+    context: &ConversionContext,
+    node_name: &str,
+) -> Result<(), OnnxError> {
+    let scale_shape = resolve_tensor_shape(scale_name, context);
+    if is_scalar_shape(scale_shape.as_deref()) {
+        return Ok(());
+    }
+
+    let x_shape = context.resolve_shape(x_name);
+    if let (Some(x_shape), Some(scale_shape)) = (x_shape, scale_shape.as_deref()) {
+        if x_shape == scale_shape {
+            return Ok(());
+        }
+    }
+
+    Err(OnnxError::unsupported_op(
+        "QuantizeLinear/DequantizeLinear per-channel",
+        node_name,
+    ))
+}
+
+fn resolve_tensor_shape(name: &str, context: &ConversionContext) -> Option<Vec<i64>> {
+    if let Some(shape) = context.resolve_shape(name) {
+        return Some(shape.clone());
+    }
+    context
+        .initializers
+        .get(name)
+        .or_else(|| {
+            context
+                .initializers
+                .get(&crate::onnx::convert::sanitize_identifier(name))
+        })
+        .map(|tensor| tensor.dims.clone())
+}
+
+fn is_scalar_shape(shape: Option<&[i64]>) -> bool {
+    match shape {
+        None | Some([]) => true,
+        Some(dims) => dims.iter().all(|&d| d == 1),
+    }
+}
+
+fn emit_quantize_linear(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    x: MLOperand,
+    scale: MLOperand,
+    zero_point_name: Option<&String>,
+    output_name: &str,
+) -> Result<MLOperand, OnnxError> {
+    let opts = OnnxBuilder::labeled_options(output_name);
+    if let Some(zp_name) = zero_point_name.filter(|s| !s.is_empty()) {
+        let zero_point = b.resolve_operand(zp_name)?;
+        return b
+            .builder
+            .quantize_linear_with_zeropoint(x, scale, zero_point)
+            .map_err(map_op_error);
+    }
+    b.builder
+        .quantize_linear_with_options(x, scale, None, opts)
+        .map_err(map_op_error)
+}
+
+fn emit_dequantize_linear(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    x: MLOperand,
+    scale: MLOperand,
+    zero_point_name: Option<&String>,
+    output_name: &str,
+) -> Result<MLOperand, OnnxError> {
+    let opts = OnnxBuilder::labeled_options(output_name);
+    if let Some(zp_name) = zero_point_name.filter(|s| !s.is_empty()) {
+        let zero_point = b.resolve_operand(zp_name)?;
+        return b
+            .builder
+            .dequantize_linear_with_zeropoint(x, scale, zero_point)
+            .map_err(map_op_error);
+    }
+    b.builder
+        .dequantize_linear_with_options(x, scale, None, opts)
+        .map_err(map_op_error)
 }
 
 #[cfg(test)]

@@ -28,7 +28,7 @@ use rustnn::DataType;
 pub struct ComparisonHandler;
 
 fn is_unary_logical(op_type: &str) -> bool {
-    op_type == "Not"
+    matches!(op_type, "Not" | "IsNaN" | "IsInf")
 }
 
 fn is_binary_logical(op_type: &str) -> bool {
@@ -48,6 +48,8 @@ impl OpHandler for ComparisonHandler {
                 | "And"
                 | "Or"
                 | "Xor"
+                | "IsNaN"
+                | "IsInf"
         )
     }
 
@@ -177,6 +179,14 @@ fn emit_unary_logical(
         "Not" => b
             .builder
             .logical_not_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "IsNaN" => b
+            .builder
+            .is_nan_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "IsInf" => b
+            .builder
+            .is_infinite_with_options(input, opts)
             .map_err(map_op_error)?,
         _ => {
             return Err(OnnxError::unsupported_op(

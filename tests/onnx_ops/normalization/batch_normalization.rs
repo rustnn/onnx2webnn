@@ -39,7 +39,7 @@ fn build_fixture_opset_14() -> ModelProto {
 
 #[test]
 fn convert_op_opset_14() {
-    assert_op_matches_ort(build_fixture_opset_14(), ExpectConvertOp::UnsupportedOp, 14);
+    assert_op_matches_ort(build_fixture_opset_14(), ExpectConvertOp::Success, 14);
 }
 
 fn build_fixture_opset_26() -> ModelProto {
@@ -73,5 +73,5 @@ fn build_fixture_opset_26() -> ModelProto {
 
 #[test]
 fn convert_op_opset_26() {
-    assert_op_matches_ort(build_fixture_opset_26(), ExpectConvertOp::UnsupportedOp, 26);
+    assert_op_matches_ort(build_fixture_opset_26(), ExpectConvertOp::Success, 26);
 }

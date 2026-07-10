@@ -16,6 +16,7 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         # pool.rs
         "MaxPool",
         "AveragePool",
+        "LpPool",
         "GlobalMaxPool",
         "GlobalAveragePool",
         # elementwise.rs
@@ -36,9 +37,13 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "And",
         "Or",
         "Xor",
+        "IsNaN",
+        "IsInf",
         # conditional.rs
         "Where",
         # normalization.rs
+        "BatchNormalization",
+        "InstanceNormalization",
         "LayerNormalization",
         "Softmax",
         # reshape.rs
@@ -54,9 +59,14 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         # conversion.rs
         "Cast",
         "Constant",
+        "QuantizeLinear",
+        "DequantizeLinear",
         # utility.rs
         "Shape",
         "Gather",
+        "GatherND",
+        "GatherElements",
+        "ReverseSequence",
         "Slice",
         "ConstantOfShape",
         "Range",
@@ -66,6 +76,15 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "ReduceSum",
         "ReduceMax",
         "ReduceMin",
+        "ReduceL1",
+        "ReduceL2",
+        "ReduceLogSum",
+        "ReduceLogSumExp",
+        "ReduceProd",
+        "ReduceSumSquare",
+        "ArgMin",
+        "ArgMax",
+        "CumSum",
         # activation.rs
         "Relu",
         "Gelu",
@@ -96,14 +115,17 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "PRelu",
         # scatter.rs
         "ScatterND",
+        "ScatterElements",
+        # resize.rs
+        "Resize",
         # pad.rs
         "Pad",
     }
 )
 
 # convert.rs MIN/MAX_SUPPORTED_OPSET for domain ai.onnx
-WEBNN_MIN_OPSET: int = 11
-WEBNN_MAX_OPSET: int = 18
+WEBNN_MIN_OPSET: int = 9
+WEBNN_MAX_OPSET: int = 26
 
 
 def is_webnn_supported_op(domain: str, op_type: str) -> bool:

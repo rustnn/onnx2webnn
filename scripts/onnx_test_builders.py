@@ -438,7 +438,7 @@ def _build_range(opset: int) -> ModelProto:
 def _build_resize(opset: int) -> ModelProto:
     x = _f32("X", [1, 1, 4, 4])
     sizes = numpy_helper.from_array(np.array([1, 1, 6, 6], dtype=np.int64), "sizes")
-    node = helper.make_node("Resize", ["X", "", "sizes"], ["Y"], mode="nearest", name="test")
+    node = helper.make_node("Resize", ["X", "", "", "sizes"], ["Y"], mode="nearest", name="test")
     graph = helper.make_graph([node], "test_Resize_graph", [x], [_f32("Y", [1, 1, 6, 6])], [sizes])
     return _model(graph, opset)
 

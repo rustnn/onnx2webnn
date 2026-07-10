@@ -20,7 +20,7 @@ fn build_fixture_opset_17() -> ModelProto {
             vec![node(
                 "Resize",
                 "test",
-                &["X", "", "sizes"],
+                &["X", "", "", "sizes"],
                 &["Y"],
                 &[attr_string("mode", "nearest")],
             )],
@@ -31,7 +31,7 @@ fn build_fixture_opset_17() -> ModelProto {
 
 #[test]
 fn convert_op_opset_17() {
-    assert_op_matches_ort(build_fixture_opset_17(), ExpectConvertOp::UnsupportedOp, 17);
+    assert_op_matches_ort(build_fixture_opset_17(), ExpectConvertOp::Success, 17);
 }
 
 fn build_fixture_opset_26() -> ModelProto {
@@ -46,7 +46,7 @@ fn build_fixture_opset_26() -> ModelProto {
             vec![node(
                 "Resize",
                 "test",
-                &["X", "", "sizes"],
+                &["X", "", "", "sizes"],
                 &["Y"],
                 &[attr_string("mode", "nearest")],
             )],
@@ -57,5 +57,5 @@ fn build_fixture_opset_26() -> ModelProto {
 
 #[test]
 fn convert_op_opset_26() {
-    assert_op_matches_ort(build_fixture_opset_26(), ExpectConvertOp::UnsupportedOp, 26);
+    assert_op_matches_ort(build_fixture_opset_26(), ExpectConvertOp::Success, 26);
 }

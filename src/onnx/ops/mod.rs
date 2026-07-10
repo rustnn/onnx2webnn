@@ -35,6 +35,7 @@ pub mod pad;
 pub mod pool;
 pub mod reduction;
 pub mod reshape;
+pub mod resize;
 pub mod scatter;
 pub mod utility;
 
@@ -50,6 +51,7 @@ use pad::PadHandler;
 use pool::PoolHandler;
 use reduction::ReductionHandler;
 use reshape::ReshapeHandler;
+use resize::ResizeHandler;
 use scatter::ScatterHandler;
 use utility::UtilityHandler;
 
@@ -167,6 +169,7 @@ impl OpRegistry {
             Box::new(NormalizationHandler),
             Box::new(ReshapeHandler),
             Box::new(PadHandler),
+            Box::new(ResizeHandler),
             Box::new(ConversionHandler),
             Box::new(UtilityHandler),
             Box::new(ReductionHandler),

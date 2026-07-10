@@ -366,7 +366,12 @@ pub fn infer_node_output_shape(
                 .map(|a| a.ints.iter().map(|&i| i as usize).collect::<Vec<usize>>())
                 .unwrap_or_else(|| (0..input_shape.len()).rev().collect());
 
-            // Apply permutation
+            // Apply permutation. Bail out (rather than panic) if perm references an
+            // axis beyond the currently-known input rank — this happens when the input
+            // shape has not yet been fully inferred.
+            if perm.iter().any(|&i| i >= input_shape.len()) {
+                return None;
+            }
             Some(perm.iter().map(|&i| input_shape[i]).collect())
         }
 

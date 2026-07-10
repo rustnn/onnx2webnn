@@ -40,6 +40,11 @@ def _format_u8_list(values: list[int]) -> str:
     return f"&[{inner}]"
 
 
+def _format_i8_list(values: list[int]) -> str:
+    inner = ", ".join(str(int(v)) for v in values)
+    return f"&[{inner}]"
+
+
 def _format_str_list(values: list[str]) -> str:
     inner = ", ".join(f"\"{_escape_rust_str(v)}\"" for v in values)
     return f"&[{inner}]"
@@ -66,6 +71,9 @@ def _emit_initializer(init: TensorProto, *, indent: str) -> str:
     if init.data_type == TensorProto.UINT8:
         data = _format_u8_list(arr.flatten().astype(np.uint8).tolist())
         return f'{indent}u8_init("{name}", {shape}, {data}),'
+    if init.data_type == TensorProto.INT8:
+        data = _format_i8_list(arr.flatten().astype(np.int8).tolist())
+        return f'{indent}i8_init("{name}", {shape}, {data}),'
     if init.data_type == TensorProto.BOOL:
         data = _format_bool_list(arr.flatten().astype(bool).tolist())
         return f'{indent}bool_init("{name}", {shape}, {data}),'
@@ -115,6 +123,7 @@ def _emit_value_info(vi, *, indent: str, is_output: bool) -> str:
         suffix = "output" if is_output else "input"
         mapping = {
             TensorProto.FLOAT: "f32",
+            TensorProto.INT8: "i8",
             TensorProto.INT32: "i32",
             TensorProto.INT64: "i64",
             TensorProto.UINT8: "u8",
@@ -206,10 +215,10 @@ def emit_model(model: ModelProto, *, indent: str = "    ") -> str:
     )
 
 
-def emit_build_function(model: ModelProto) -> list[str]:
+def emit_build_function(model: ModelProto, *, fn_name: str = "build_fixture") -> list[str]:
     body = emit_model(model, indent="    ")
     return [
-        "fn build_fixture() -> ModelProto {",
+        f"fn {fn_name}() -> ModelProto {{",
         "    use onnx2webnn::test_models::prelude::*;",
         "",
         f"    {body}",

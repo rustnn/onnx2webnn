@@ -100,21 +100,117 @@ def _is_variadic(param) -> bool:
     return param.option.name == "Variadic"
 
 
-def _ops_at_opset(version: int) -> list[str]:
+MIN_SUPPORTED_OPSET = 9
+MAX_SUPPORTED_OPSET = 26
+
+
+def _all_onnx_op_names() -> list[str]:
     names: set[str] = set()
     for schema in defs.get_all_schemas_with_history():
         domain = schema.domain or ""
         if domain not in ("", "ai.onnx"):
             continue
         names.add(schema.name)
-    result: list[str] = []
-    for name in sorted(names):
-        if not defs.has(name, version, ONNX_DOMAIN):
-            continue
+    return sorted(names)
+
+
+def _op_available_at(version: int, name: str, *, include_deprecated: bool = True) -> bool:
+    if not defs.has(name, version, ONNX_DOMAIN):
+        return False
+    if not include_deprecated:
         schema = defs.get_schema(name, version, ONNX_DOMAIN)
         if schema.deprecated:
+            return False
+    return True
+
+
+def _ops_at_opset(version: int) -> list[str]:
+    return [
+        name
+        for name in _all_onnx_op_names()
+        if _op_available_at(version, name, include_deprecated=False)
+    ]
+
+
+def _schema_fingerprint(schema) -> tuple:
+    """Structural signature: inputs, outputs, and attribute names."""
+    inputs = tuple((p.name, p.option.name, p.type_str) for p in schema.inputs)
+    outputs = tuple((p.name, p.option.name, p.type_str) for p in schema.outputs)
+    attrs = tuple(sorted(schema.attributes.keys()))
+    return (inputs, outputs, attrs)
+
+
+def _schema_revisions_for_op(op_type: str) -> list:
+    revisions = []
+    for schema in defs.get_all_schemas_with_history():
+        domain = schema.domain or ""
+        if schema.name != op_type or domain not in ("", "ai.onnx"):
             continue
-        result.append(name)
+        revisions.append(schema)
+    revisions.sort(key=lambda s: s.since_version)
+    return revisions
+
+
+def _schema_structure_bands(
+    op_type: str, max_version: int
+) -> list[tuple[tuple, int, int]]:
+    """Merge consecutive ONNX schema revisions with the same structure into bands."""
+    revisions = _schema_revisions_for_op(op_type)
+    if not revisions:
+        return []
+    bands: list[tuple[tuple, int, int]] = []
+    for i, rev in enumerate(revisions):
+        fp = _schema_fingerprint(rev)
+        sv = rev.since_version
+        end = revisions[i + 1].since_version - 1 if i + 1 < len(revisions) else max_version
+        if bands and bands[-1][0] == fp:
+            bands[-1] = (fp, bands[-1][1], end)
+        else:
+            bands.append((fp, sv, end))
+    return bands
+
+
+def fixture_opsets_for_op(
+    op_type: str, min_version: int, max_version: int
+) -> list[int]:
+    """Return opsets to test: one per distinct ONNX schema structure in range.
+
+    For each structure band (e.g. Pad with ``pads`` attribute vs ``pads`` input), pick the
+    highest buildable opset in ``[min_version, max_version]`` that still uses that structure.
+    Falls back to the band's ``since_version`` when the high end is not buildable.
+    """
+    buildable: list[int] = []
+    for _fp, since_version, band_end in _schema_structure_bands(op_type, max_version):
+        if band_end < min_version or since_version > max_version:
+            continue
+        lo = max(since_version, min_version)
+        hi = min(band_end, max_version)
+        if lo > hi:
+            continue
+        for opset in (hi, lo):
+            try:
+                build_test_model(op_type, opset)
+                buildable.append(opset)
+                break
+            except Exception:
+                continue
+    return sorted(set(buildable))
+
+
+def fixture_opset_for_op(op_type: str, min_version: int, max_version: int) -> int | None:
+    """Pick the newest opset in range where ``op_type`` is defined and buildable."""
+    opsets = fixture_opsets_for_op(op_type, min_version, max_version)
+    return opsets[-1] if opsets else None
+
+
+def ops_in_opset_range(min_version: int, max_version: int) -> list[str]:
+    """Union of operators available at any opset in ``[min_version, max_version]``."""
+    result: list[str] = []
+    for name in _all_onnx_op_names():
+        for version in range(max_version, min_version - 1, -1):
+            if _op_available_at(version, name, include_deprecated=True):
+                result.append(name)
+                break
     return result
 
 
@@ -239,15 +335,22 @@ def _shape_for_param(
     return list(DEFAULT_VECTOR_SHAPE)
 
 
-def _required_attr(name: str, attr, op_type: str):
+def _required_attr(
+    name: str,
+    attr,
+    op_type: str,
+    *,
+    data_rank: int = 2,
+    input_shape: list[int] | None = None,
+):
     attr_type = attr.type
+    shape = input_shape or list(DEFAULT_VECTOR_SHAPE)
     if op_type == "Cast" and name == "to":
         return helper.make_attribute("to", TensorProto.FLOAT)
     if op_type == "CastLike" and name == "to":
         return helper.make_attribute("to", TensorProto.FLOAT)
     if name == "axis" and op_type in (
         "Concat",
-        "Split",
         "Softmax",
         "LogSoftmax",
         "ReduceMean",
@@ -255,6 +358,8 @@ def _required_attr(name: str, attr, op_type: str):
         "Hardmax",
     ):
         return helper.make_attribute("axis", 0)
+    if name == "axis" and op_type == "Split":
+        return helper.make_attribute("axis", 1)
     if op_type == "DepthToSpace" and name == "blocksize":
         return helper.make_attribute("blocksize", 2)
     if op_type == "SpaceToDepth" and name == "blocksize":
@@ -266,6 +371,11 @@ def _required_attr(name: str, attr, op_type: str):
             "value",
             numpy_helper.from_array(np.array(1.0, dtype=np.float32), name="const"),
         )
+    if op_type == "ConstantOfShape" and name == "value":
+        return helper.make_attribute(
+            "value",
+            numpy_helper.from_array(np.array([1.0], dtype=np.float32), name="value"),
+        )
     if op_type == "Mod" and name == "fmod":
         return helper.make_attribute(name, 1)
     if attr_type == AttributeProto.INT:
@@ -273,13 +383,17 @@ def _required_attr(name: str, attr, op_type: str):
     if attr_type == AttributeProto.INTS:
         if name == "kernel_shape":
             return helper.make_attribute(name, [2, 2])
+        if name == "pads" and op_type == "Pad":
+            return helper.make_attribute(name, [0] * (2 * data_rank))
+        if name == "starts" and op_type == "Slice":
+            return helper.make_attribute(name, [0] * data_rank)
+        if name == "ends" and op_type == "Slice":
+            return helper.make_attribute(name, list(shape))
         if name == "pads":
             return helper.make_attribute(name, [0, 0, 0, 0])
         if name == "strides":
             return helper.make_attribute(name, [1, 1])
         if name == "dilations":
-            return helper.make_attribute(name, [1, 1])
-        if name == "split" and op_type == "Split":
             return helper.make_attribute(name, [1, 1])
         return helper.make_attribute(name, [0])
     if attr_type == AttributeProto.STRING:
@@ -289,16 +403,35 @@ def _required_attr(name: str, attr, op_type: str):
     return None
 
 
-def _build_attrs(schema, op_type: str) -> list:
+def _build_attrs(
+    schema,
+    op_type: str,
+    *,
+    data_rank: int = 2,
+    input_shape: list[int] | None = None,
+) -> list:
+    skip_cast_attrs = {"saturate", "round_mode"}
     attrs = []
     for name, attr in schema.attributes.items():
+        if op_type == "Cast" and name in skip_cast_attrs:
+            continue
+        if op_type == "Split" and name == "axis":
+            attrs.append(helper.make_attribute("axis", 1))
+            continue
+        if op_type == "ConstantOfShape" and name == "value":
+            built = _required_attr(name, attr, op_type, data_rank=data_rank, input_shape=input_shape)
+            if built is not None:
+                attrs.append(built)
+            continue
         if op_type == "Mod" and name == "fmod":
             attrs.append(helper.make_attribute("fmod", 1))
             continue
         if attr.default_value.ByteSize() > 0 and attr.default_value.name:
             attrs.append(attr.default_value)
         elif attr.required:
-            built = _required_attr(name, attr, op_type)
+            built = _required_attr(
+                name, attr, op_type, data_rank=data_rank, input_shape=input_shape
+            )
             if built is not None:
                 attrs.append(built)
     return attrs
@@ -358,6 +491,12 @@ def _guess_output_shape(
         if len(input_shape) > 1:
             return input_shape[1:]
         return []
+    if op_type == "Split":
+        axis = 1
+        if len(input_shape) > axis and input_shape[axis] >= 2:
+            out_shape = list(input_shape)
+            out_shape[axis] = input_shape[axis] // 2
+            return out_shape
     return list(input_shape)
 
 
@@ -366,6 +505,16 @@ def _pads_initializer(rank: int) -> TensorProto:
     if rank >= 2:
         pads[-1] = 1
     return numpy_helper.from_array(pads, "pads")
+
+
+def _schema_outputs(schema, op_type: str):
+    """Graph/node outputs — WebNN handlers may only implement a subset."""
+    outputs = list(schema.outputs)
+    if op_type == "MaxPool":
+        return [o for o in outputs if o.name == "Y"]
+    if op_type == "LayerNormalization":
+        return [o for o in outputs if o.name == "Y"]
+    return outputs
 
 
 def _build_constant(opset: int) -> ModelProto:
@@ -466,16 +615,18 @@ def _build_generic(op_type: str, opset: int) -> ModelProto:
             _output_elem_type(op_type, out, input_elem_type),
             _guess_output_shape(op_type, out, input_shape=input_shape),
         )
-        for out in schema.outputs
+        for out in _schema_outputs(schema, op_type)
     ]
 
     node = helper.make_node(
         op_type,
         node_inputs,
-        [out.name for out in schema.outputs],
+        [out.name for out in _schema_outputs(schema, op_type)],
         name=f"test_{op_type}",
     )
-    node.attribute.extend(_build_attrs(schema, op_type))
+    node.attribute.extend(
+        _build_attrs(schema, op_type, data_rank=data_rank, input_shape=input_shape)
+    )
 
     graph = helper.make_graph(
         [node],

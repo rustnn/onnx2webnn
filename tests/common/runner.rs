@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 
 use onnx2webnn::onnx::builder::OnnxBuilder;
 use onnx2webnn::protos::onnx::{
-    type_proto, ModelProto, OperatorSetIdProto, TensorProto_DataType, ValueInfoProto,
+    type_proto, ModelProto, TensorProto_DataType, ValueInfoProto,
 };
 use onnx2webnn::{convert_model_proto, ConvertOptions, OnnxError, ValidatedGraph};
 use prost::Message;
@@ -18,28 +18,32 @@ use rustnn::mlcontext::{MLContext, MLTensor, MLTensorDescriptor};
 use rustnn::operator_enums::MLOperandDataType;
 use rustnn::{OnnxInput, TensorData, run_onnx_with_inputs};
 
-/// Expected outcome for operator-level conversion (opset is patched separately).
+/// Expected outcome for operator-level conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpectConvertOp {
     Success,
     UnsupportedOp,
 }
 
-/// Rewrite `opset_import` so op-level expectations are not masked by opset gating.
-pub fn patch_opset(model: &mut ModelProto, opset: i64) {
-    model.opset_import = vec![OperatorSetIdProto {
-        domain: String::new(),
-        version: opset,
-    }];
-}
-
-/// Convert (when supported), execute via rustnn dispatch, and compare against ORT on the ONNX model.
+/// Convert (when supported), execute via rustnn dispatch, and compare against ORT.
+///
+/// Fixtures are built at the opset declared in `model.opset_import`. The converter
+/// itself accepts any `ai.onnx` opset in the supported range (9–26).
 pub fn assert_op_matches_ort(
-    mut model: ModelProto,
+    model: ModelProto,
     expect: ExpectConvertOp,
     test_opset: i64,
 ) {
-    patch_opset(&mut model, test_opset);
+    let declared_opset = model
+        .opset_import
+        .iter()
+        .find(|opset| opset.domain.is_empty())
+        .map(|opset| opset.version)
+        .unwrap_or_default();
+    assert_eq!(
+        declared_opset, test_opset,
+        "fixture opset and test opset should match"
+    );
     let result = convert_model_proto(model.clone(), &ConvertOptions::default());
     match expect {
         ExpectConvertOp::UnsupportedOp => match result {
@@ -328,6 +332,10 @@ fn compare_outputs(
         let got = actual
             .get(&out.name)
             .unwrap_or_else(|| panic!("missing rustnn output for {}", out.name));
+        if let Some(expected_bool) = ort.bool_data.as_ref() {
+            assert_same_bool_values(&out.name, expected_bool, got);
+            continue;
+        }
         let expected = ort
             .float32_data
             .as_ref()
@@ -335,6 +343,27 @@ fn compare_outputs(
             .or_else(|| ort.int64_data.as_ref().map(|data| data.iter().map(|&v| v as f64).collect()))
             .unwrap_or_else(|| ort.data.clone());
         assert_same_values(&out.name, &expected, got);
+    }
+}
+
+fn assert_same_bool_values(name: &str, expected: &[bool], actual: &[f64]) {
+    assert_eq!(
+        expected.len(),
+        actual.len(),
+        "output length mismatch for {name}"
+    );
+    for (i, (expected, actual)) in expected.iter().zip(actual.iter()).enumerate() {
+        let actual_bool = if (*actual - 0.0).abs() <= f64::EPSILON {
+            false
+        } else if (*actual - 1.0).abs() <= f64::EPSILON {
+            true
+        } else {
+            panic!("output {name}[{i}] expected bool-compatible 0/1, got {actual}");
+        };
+        assert_eq!(
+            *expected, actual_bool,
+            "output {name}[{i}] mismatch: ORT={expected}, rustnn={actual_bool}"
+        );
     }
 }
 

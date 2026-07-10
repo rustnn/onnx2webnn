@@ -105,6 +105,14 @@ pub fn u8_output(name: &str, shape: &[i64]) -> ValueInfoProto {
     tensor_output(name, TensorProto_DataType::Uint8 as i32, shape)
 }
 
+pub fn i8_input(name: &str, shape: &[i64]) -> ValueInfoProto {
+    tensor_input(name, TensorProto_DataType::Int8 as i32, shape)
+}
+
+pub fn i8_output(name: &str, shape: &[i64]) -> ValueInfoProto {
+    tensor_output(name, TensorProto_DataType::Int8 as i32, shape)
+}
+
 pub fn bool_input(name: &str, shape: &[i64]) -> ValueInfoProto {
     tensor_input(name, TensorProto_DataType::Bool as i32, shape)
 }
@@ -172,6 +180,17 @@ pub fn u8_init(name: &str, shape: &[i64], data: &[u8]) -> TensorProto {
         data_type: TensorProto_DataType::Uint8 as i32,
         int32_data: data.iter().map(|&b| i32::from(b)).collect(),
         raw_data: data.to_vec(),
+        ..Default::default()
+    }
+}
+
+pub fn i8_init(name: &str, shape: &[i64], data: &[i8]) -> TensorProto {
+    TensorProto {
+        name: name.to_string(),
+        dims: shape.to_vec(),
+        data_type: TensorProto_DataType::Int8 as i32,
+        int32_data: data.iter().map(|&b| i32::from(b)).collect(),
+        raw_data: data.iter().map(|&b| b as u8).collect(),
         ..Default::default()
     }
 }

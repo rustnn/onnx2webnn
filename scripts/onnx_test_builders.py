@@ -141,24 +141,36 @@ def _build_cum_axis(op_type: str, opset: int) -> ModelProto:
 
 
 def _build_col2im(opset: int) -> ModelProto:
-    data = _f32("data", [1, 4, 2])
-    indices = numpy_helper.from_array(np.array([0, 0, 0, 0, 0, 1, 0, 1], dtype=np.int64), "indices")
+    # Minimal valid Col2Im (opset 18+): input, image_shape, block_shape.
+    input_data = numpy_helper.from_array(
+        np.array(
+            [
+                [
+                    [1.0, 6.0, 11.0, 16.0, 21.0],
+                    [2.0, 7.0, 12.0, 17.0, 22.0],
+                    [3.0, 8.0, 13.0, 18.0, 23.0],
+                    [4.0, 9.0, 14.0, 19.0, 24.0],
+                    [5.0, 0.0, 15.0, 20.0, 25.0],
+                ]
+            ],
+            dtype=np.float32,
+        ),
+        "input",
+    )
+    image_shape = numpy_helper.from_array(np.array([5, 5], dtype=np.int64), "image_shape")
+    block_shape = numpy_helper.from_array(np.array([1, 5], dtype=np.int64), "block_shape")
     node = helper.make_node(
         "Col2Im",
-        ["data", "indices"],
+        ["input", "image_shape", "block_shape"],
         ["output"],
         name="test_Col2Im",
-        dilations=[1, 1],
-        kernel_shape=[2, 2],
-        pads=[0, 0, 0, 0],
-        strides=[1, 1],
     )
     graph = helper.make_graph(
         [node],
         "test_Col2Im_graph",
-        [data],
-        [_f32("output", [1, 1, 2, 2])],
-        [indices],
+        [],
+        [_f32("output", [1, 1, 5, 5])],
+        [input_data, image_shape, block_shape],
     )
     return _model(graph, opset)
 
@@ -183,7 +195,7 @@ def _build_constant_of_shape(opset: int) -> ModelProto:
         "ConstantOfShape",
         ["input"],
         ["output"],
-        value=helper.make_tensor("value", TensorProto.FLOAT, [], [1.0]),
+        value=helper.make_tensor("value", TensorProto.FLOAT, [1], [1.0]),
         name="test",
     )
     graph = helper.make_graph(
@@ -275,21 +287,33 @@ def _build_if(opset: int) -> ModelProto:
 
 
 def _build_loop(opset: int) -> ModelProto:
+    false_val = helper.make_tensor("false", TensorProto.BOOL, [], [False])
     body = helper.make_graph(
-        [helper.make_node("Identity", [], ["cond_out"], value=helper.make_tensor("c", TensorProto.BOOL, [], [False]))],
+        [
+            helper.make_node("Constant", [], ["cond_out"], value=false_val, name="set_false"),
+            helper.make_node("Identity", ["v_in"], ["v_out"], name="pass"),
+        ],
         "body",
-        [],
-        [helper.make_tensor_value_info("cond_out", TensorProto.BOOL, [])],
+        [
+            helper.make_tensor_value_info("iteration_num", TensorProto.INT64, []),
+            helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+            helper.make_tensor_value_info("v_in", TensorProto.INT64, []),
+        ],
+        [
+            helper.make_tensor_value_info("cond_out", TensorProto.BOOL, []),
+            helper.make_tensor_value_info("v_out", TensorProto.INT64, []),
+        ],
     )
-    iter_init = numpy_helper.from_array(np.int64(0), "iter")
-    cond_init = numpy_helper.from_array(np.array(True), "cond")
-    node = helper.make_node("Loop", ["iter", "cond"], ["out"], body=body, name="test_Loop")
+    trip_count = numpy_helper.from_array(np.array(1, dtype=np.int64), "M")
+    cond_init = numpy_helper.from_array(np.array(True, dtype=np.bool_), "cond")
+    v_init = numpy_helper.from_array(np.array(0, dtype=np.int64), "v_init")
+    node = helper.make_node("Loop", ["M", "cond", "v_init"], ["v_final"], body=body, name="test_Loop")
     graph = helper.make_graph(
         [node],
         "test_Loop_graph",
         [],
-        [_i64("out", [])],
-        [iter_init, cond_init],
+        [_i64("v_final", [])],
+        [trip_count, cond_init, v_init],
     )
     return _model(graph, opset)
 
@@ -376,7 +400,7 @@ def _build_optional(opset: int) -> ModelProto:
 def _build_quantize_linear(opset: int) -> ModelProto:
     x = _f32("x", DEFAULT_VECTOR_SHAPE)
     scale = numpy_helper.from_array(np.array(0.5, dtype=np.float32), "y_scale")
-    zp = numpy_helper.from_array(np.array(0, dtype=np.int8), "y_zero_point")
+    zp = numpy_helper.from_array(np.array(0, dtype=np.uint8), "y_zero_point")
     node = helper.make_node("QuantizeLinear", ["x", "y_scale", "y_zero_point"], ["y"], name="test")
     graph = helper.make_graph([node], "test_QuantizeLinear_graph", [x], [_u8("y", DEFAULT_VECTOR_SHAPE)], [scale, zp])
     return _model(graph, opset)
@@ -390,6 +414,23 @@ def _build_dynamic_quantize_linear(opset: int) -> ModelProto:
         "test_DynamicQuantizeLinear_graph",
         [x],
         [_u8("y", DEFAULT_VECTOR_SHAPE), _f32("y_scale", []), _u8("y_zero_point", [])],
+    )
+    return _model(graph, opset)
+
+
+def _build_range(opset: int) -> ModelProto:
+    # Fractional float range exercises the dtype-aware lowering (start=0.5, limit=2.0, delta=0.5
+    # -> [0.5, 1.0, 1.5]). Integer-valued floats would hide truncation bugs.
+    start = numpy_helper.from_array(np.array(0.5, dtype=np.float32), "start")
+    limit = numpy_helper.from_array(np.array(2.0, dtype=np.float32), "limit")
+    delta = numpy_helper.from_array(np.array(0.5, dtype=np.float32), "delta")
+    node = helper.make_node("Range", ["start", "limit", "delta"], ["output"], name="test")
+    graph = helper.make_graph(
+        [node],
+        "test_Range_graph",
+        [],
+        [_f32("output", [3])],
+        [start, limit, delta],
     )
     return _model(graph, opset)
 
@@ -434,21 +475,53 @@ def _build_roi_align(opset: int) -> ModelProto:
 
 
 def _build_rotary_embedding(opset: int) -> ModelProto:
-    x = _f32("x", [1, 2, 4, 8])
-    pos = _i64("position_ids", [1, 2])
-    node = helper.make_node("RotaryEmbedding", ["x", "position_ids"], ["out"], name="test")
-    graph = helper.make_graph([node], "test_RotaryEmbedding_graph", [x, pos], [_f32("out", [1, 2, 4, 8])])
+    x = _f32("x", [1, 4, 2, 2])
+    cos_cache = numpy_helper.from_array(np.ones((1, 2, 1), dtype=np.float32), "cos_cache")
+    sin_cache = numpy_helper.from_array(np.zeros((1, 2, 1), dtype=np.float32), "sin_cache")
+    node = helper.make_node(
+        "RotaryEmbedding",
+        ["x", "cos_cache", "sin_cache"],
+        ["out"],
+        name="test",
+        num_heads=4,
+        rotary_embedding_dim=2,
+    )
+    graph = helper.make_graph(
+        [node],
+        "test_RotaryEmbedding_graph",
+        [x],
+        [_f32("out", [1, 4, 2, 2])],
+        [cos_cache, sin_cache],
+    )
     return _model(graph, opset)
 
 
 def _build_split(opset: int) -> ModelProto:
     x = _f32("input", DEFAULT_VECTOR_SHAPE)
-    node = helper.make_node("Split", ["input"], ["out0", "out1"], axis=0, num_outputs=2, name="test")
+    # Opset 18+ uses `num_outputs`; older schemas use the `split` attribute.
+    if opset >= 18:
+        node = helper.make_node(
+            "Split",
+            ["input"],
+            ["out0", "out1"],
+            axis=1,
+            num_outputs=2,
+            name="test",
+        )
+    else:
+        node = helper.make_node(
+            "Split",
+            ["input"],
+            ["out0", "out1"],
+            axis=1,
+            split=[1, 1],
+            name="test",
+        )
     graph = helper.make_graph(
         [node],
         "test_Split_graph",
         [x],
-        [_f32("out0", [1]), _f32("out1", [1])],
+        [_f32("out0", [1, 1]), _f32("out1", [1, 1])],
     )
     return _model(graph, opset)
 
@@ -479,9 +552,9 @@ def _build_sequence_empty(opset: int) -> ModelProto:
 
 def _build_sequence_at(opset: int) -> ModelProto:
     t = numpy_helper.from_array(np.zeros((1, 2), dtype=np.float32), "t0")
-    seq = helper.make_node("SequenceConstruct", ["t0"], ["seq"], name="mk")
-    at = helper.make_node("SequenceAt", ["seq"], ["output"], name="test")
     pos = numpy_helper.from_array(np.array(0, dtype=np.int64), "position")
+    seq = helper.make_node("SequenceConstruct", ["t0"], ["seq"], name="mk")
+    at = helper.make_node("SequenceAt", ["seq", "position"], ["output"], name="test")
     graph = helper.make_graph(
         [seq, at],
         "test_SequenceAt_graph",
@@ -495,11 +568,10 @@ def _build_sequence_at(opset: int) -> ModelProto:
 def _build_concat_from_sequence(opset: int) -> ModelProto:
     t0 = numpy_helper.from_array(np.zeros((1, 2), dtype=np.float32), "t0")
     t1 = numpy_helper.from_array(np.ones((1, 2), dtype=np.float32), "t1")
-    s0 = helper.make_node("SequenceConstruct", ["t0"], ["s0"], name="s0")
-    s1 = helper.make_node("SequenceConstruct", ["t1"], ["s1"], name="s1")
-    cat = helper.make_node("ConcatFromSequence", ["s0", "s1"], ["output"], axis=0, name="test")
+    seq = helper.make_node("SequenceConstruct", ["t0", "t1"], ["input_sequence"], name="mk")
+    cat = helper.make_node("ConcatFromSequence", ["input_sequence"], ["output"], axis=0, name="test")
     graph = helper.make_graph(
-        [s0, s1, cat],
+        [seq, cat],
         "test_ConcatFromSequence_graph",
         [],
         [_f32("output", [2, 2])],
@@ -581,9 +653,26 @@ def _build_max_roi_pool(opset: int) -> ModelProto:
 
 
 def _build_max_unpool(opset: int) -> ModelProto:
-    x = _f32("X", SPATIAL_SHAPE)
-    node = helper.make_node("MaxUnpool", ["X"], ["Y"], name="test", kernel_shape=[2, 2], strides=[1, 1])
-    graph = helper.make_graph([node], "test_MaxUnpool_graph", [x], [_f32("Y", SPATIAL_SHAPE)])
+    x = _f32("X", [1, 1, 2, 2])
+    indices = numpy_helper.from_array(
+        np.array([[[[0, 1], [4, 5]]]], dtype=np.int64),
+        "I",
+    )
+    node = helper.make_node(
+        "MaxUnpool",
+        ["X", "I"],
+        ["Y"],
+        name="test",
+        kernel_shape=[2, 2],
+        strides=[2, 2],
+    )
+    graph = helper.make_graph(
+        [node],
+        "test_MaxUnpool_graph",
+        [x],
+        [_f32("Y", [1, 1, 4, 4])],
+        [indices],
+    )
     return _model(graph, opset)
 
 
@@ -663,14 +752,13 @@ def _build_string_split(opset: int) -> ModelProto:
 
 def _build_regex_full_match(opset: int) -> ModelProto:
     x = numpy_helper.from_array(np.array(["abc", "def"], dtype=object), "X")
-    pattern = numpy_helper.from_array(np.array("a.*"), "pattern")
-    node = helper.make_node("RegexFullMatch", ["X", "pattern"], ["Y"], name="test")
+    node = helper.make_node("RegexFullMatch", ["X"], ["Y"], name="test", pattern="a.*")
     graph = helper.make_graph(
         [node],
         "test_RegexFullMatch_graph",
         [],
         [helper.make_tensor_value_info("Y", TensorProto.BOOL, [2])],
-        [x, pattern],
+        [x],
     )
     return _model(graph, opset)
 
@@ -682,6 +770,10 @@ def _build_tfidf_vectorizer(opset: int) -> ModelProto:
         ["X"],
         ["Y"],
         name="test",
+        mode="TFIDF",
+        min_gram_length=1,
+        max_gram_length=1,
+        max_skip_count=0,
         ngram_counts=[1, 1, 1],
         ngram_indexes=[0, 1, 2],
         pool_int64s=[0, 1, 2],
@@ -693,19 +785,19 @@ def _build_tfidf_vectorizer(opset: int) -> ModelProto:
 def _build_dequantize_linear(opset: int) -> ModelProto:
     x = numpy_helper.from_array(np.array([1, 2], dtype=np.uint8), "x")
     scale = numpy_helper.from_array(np.array(0.5, dtype=np.float32), "x_scale")
-    zp = numpy_helper.from_array(np.array(0, dtype=np.int8), "x_zero_point")
+    zp = numpy_helper.from_array(np.array(0, dtype=np.uint8), "x_zero_point")
     node = helper.make_node("DequantizeLinear", ["x", "x_scale", "x_zero_point"], ["y"], name="test")
     graph = helper.make_graph([node], "test_DequantizeLinear_graph", [], [_f32("y", DEFAULT_VECTOR_SHAPE)], [x, scale, zp])
     return _model(graph, opset)
 
 
 def _build_conv_integer(opset: int) -> ModelProto:
-    x = numpy_helper.from_array(np.array([1, 2, 3, 4], dtype=np.uint8), "x")
+    x = numpy_helper.from_array(np.arange(1, 17, dtype=np.uint8).reshape(1, 1, 4, 4), "x")
     w = numpy_helper.from_array(np.ones((1, 1, 1, 1), dtype=np.uint8), "w")
-    xs = numpy_helper.from_array(np.array(1.0, dtype=np.float32), "x_scale")
-    wz = numpy_helper.from_array(np.array(0, dtype=np.int8), "w_zero_point")
-    node = helper.make_node("ConvInteger", ["x", "w", "x_scale", "w_zero_point"], ["y"], name="test")
-    graph = helper.make_graph([node], "test_ConvInteger_graph", [], [_i32("y", [1, 1, 4, 4])], [x, w, xs, wz])
+    xz = numpy_helper.from_array(np.array(0, dtype=np.uint8), "x_zero_point")
+    wz = numpy_helper.from_array(np.array(0, dtype=np.uint8), "w_zero_point")
+    node = helper.make_node("ConvInteger", ["x", "w", "x_zero_point", "w_zero_point"], ["y"], name="test")
+    graph = helper.make_graph([node], "test_ConvInteger_graph", [], [_i32("y", [1, 1, 4, 4])], [x, w, xz, wz])
     return _model(graph, opset)
 
 
@@ -718,7 +810,28 @@ def _build_matmul_integer(opset: int) -> ModelProto:
 
 
 def _build_qlinear_conv(opset: int) -> ModelProto:
-    return _build_conv_integer(opset)  # similar uint8 path; simplified
+    x = numpy_helper.from_array(np.arange(1, 17, dtype=np.uint8).reshape(1, 1, 4, 4), "x")
+    x_scale = numpy_helper.from_array(np.array(0.5, dtype=np.float32), "x_scale")
+    x_zp = numpy_helper.from_array(np.array(0, dtype=np.uint8), "x_zero_point")
+    w = numpy_helper.from_array(np.ones((1, 1, 1, 1), dtype=np.uint8), "w")
+    w_scale = numpy_helper.from_array(np.array(0.25, dtype=np.float32), "w_scale")
+    w_zp = numpy_helper.from_array(np.array(0, dtype=np.uint8), "w_zero_point")
+    y_scale = numpy_helper.from_array(np.array(0.125, dtype=np.float32), "y_scale")
+    y_zp = numpy_helper.from_array(np.array(0, dtype=np.uint8), "y_zero_point")
+    node = helper.make_node(
+        "QLinearConv",
+        ["x", "x_scale", "x_zero_point", "w", "w_scale", "w_zero_point", "y_scale", "y_zero_point"],
+        ["y"],
+        name="test",
+    )
+    graph = helper.make_graph(
+        [node],
+        "test_QLinearConv_graph",
+        [],
+        [_u8("y", [1, 1, 4, 4])],
+        [x, x_scale, x_zp, w, w_scale, w_zp, y_scale, y_zp],
+    )
+    return _model(graph, opset)
 
 
 def _build_qlinear_matmul(opset: int) -> ModelProto:
@@ -737,9 +850,15 @@ def _build_bernoulli(opset: int) -> ModelProto:
 
 
 def _build_random(op_type: str, opset: int) -> ModelProto:
-    shape = numpy_helper.from_array(np.array(DEFAULT_VECTOR_SHAPE, dtype=np.int64), "shape")
-    node = helper.make_node(op_type, ["shape"], ["output"], dtype=TensorProto.FLOAT, name=f"test_{op_type}")
-    graph = helper.make_graph([node], f"test_{op_type}_graph", [], [_f32("output", DEFAULT_VECTOR_SHAPE)], [shape])
+    node = helper.make_node(
+        op_type,
+        [],
+        ["output"],
+        dtype=TensorProto.FLOAT,
+        shape=DEFAULT_VECTOR_SHAPE,
+        name=f"test_{op_type}",
+    )
+    graph = helper.make_graph([node], f"test_{op_type}_graph", [], [_f32("output", DEFAULT_VECTOR_SHAPE)])
     return _model(graph, opset)
 
 
@@ -787,7 +906,6 @@ def _build_string_normalizer(opset: int) -> ModelProto:
         case_change_action="UPPER",
         is_case_sensitive=0,
         locale="en_US",
-        stopwords=[],
     )
     graph = helper.make_graph(
         [node],
@@ -887,6 +1005,7 @@ CUSTOM_BUILDERS: dict[str, Callable[[int], ModelProto]] = {
     "QLinearConv": _build_qlinear_conv,
     "QLinearMatMul": _build_qlinear_matmul,
     "QuantizeLinear": _build_quantize_linear,
+    "Range": _build_range,
     "RandomNormal": lambda o: _build_random("RandomNormal", o),
     "RandomNormalLike": lambda o: _build_random_like("RandomNormalLike", o),
     "RandomUniform": lambda o: _build_random("RandomUniform", o),

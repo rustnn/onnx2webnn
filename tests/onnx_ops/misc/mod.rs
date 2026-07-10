@@ -8,4 +8,6 @@ pub mod cum_prod;
 pub mod cum_sum;
 pub mod mean;
 pub mod non_max_suppression;
+pub mod scatter;
 pub mod sum;
+pub mod upsample;

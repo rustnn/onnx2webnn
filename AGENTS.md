@@ -4,6 +4,42 @@ ONNX → WebNN conversion crate. Rust lowering lives in `src/onnx/`; graph valid
 [rustnn](../rustnn) **ORT `build()`** on `MLGraphBuilder` (see `ValidatedGraph` in
 `src/onnx/convert.rs`). There is no JSON IR in the committed tree.
 
+## WebNN specification
+
+**Canonical operator reference:** [W3C WebNN API](https://www.w3.org/TR/webnn/) — all
+`MLGraphBuilder` methods defined by the spec (§ 7.3 Operators, § 8.9 `MLGraphBuilder`).
+
+When adding or fixing ONNX op handlers, check the spec for the target WebNN op name, options
+dictionary, and tensor limits. The spec groups operators into: tensor manipulation, quantization,
+casting, math, logical, matmul, convolution, pooling, activation, normalization, reduction, and
+RNN (`gru`/`lstm`).
+
+**Editor's draft (latest):** https://webmachinelearning.github.io/webnn/
+
+## ONNX ↔ WebNN mapping (three layers)
+
+"Unsupported" in this crate does **not** mean "no WebNN mapping exists". There are three
+independent layers:
+
+| Layer | What it tracks | Where | Count (approx.) |
+|-------|----------------|-------|-----------------|
+| **1. WebNN spec** | Ops the W3C API defines | [webnn spec](https://www.w3.org/TR/webnn/) | ~105 |
+| **2. Name mapping** | ONNX op name ↔ WebNN `MLGraphBuilder` method | `webnn-onnx-utils/src/operation_names.rs` | ~90 |
+| **3. Exporter implementation** | ONNX ops with a Rust lowering handler | `src/onnx/ops/*.rs` + `scripts/webnn_onnx_ops.py` | ~59 |
+
+An ONNX op can be:
+
+- **No WebNN target** — e.g. `If`, `Loop`, `Scan` (control flow), `StringConcat` (no string
+  tensors), `Compress`, `Einsum`, `Attention`. WebNN graphs are static DAGs; these are permanently
+  rejected. See `docs/operator-conversion-plan.md` Stage 3.
+- **Mapped but not implemented** — e.g. `BatchNormalization`, `InstanceNormalization`, `ArgMax`,
+  `GatherND`, `Resize`. Listed in `operation_names.rs` but no handler in `src/onnx/ops/` yet.
+  Tests expect `UnsupportedOp` until a handler lands.
+- **Implemented** — listed in `scripts/webnn_onnx_ops.py` and handled by `OpRegistry`. Tests
+  expect `Success` (convert + ORT vs rustnn output match).
+
+The test manifest (`webnn_onnx_ops.py`) mirrors layer 3 only. Regenerate tests after changing it.
+
 ## Build and test
 
 ```powershell
@@ -56,8 +92,14 @@ Public exports (`src/lib.rs`):
 - `convert_onnx(path, ConvertOptions) -> Result<ValidatedGraph, OnnxError>`
 - `ConvertOptions`, `OnnxError`, `ValidatedGraph`
 
-Supported ONNX opset range for `ai.onnx`: **11–18** (`MIN_SUPPORTED_OPSET` /
-`MAX_SUPPORTED_OPSET` in `src/onnx/convert.rs`).
+Supported ONNX opset range for `ai.onnx`: **9–26** (`MIN_SUPPORTED_OPSET` /
+`MAX_SUPPORTED_OPSET` in `src/onnx/convert.rs`). The converter accepts any model
+in that range; per-op integration tests build fixtures at the newest opset in
+range where each operator is still defined (not only opset 26).
+
+Operator dispatch and the unsupported-op pre-scan key on **`op_type` only** (standard
+`ai.onnx` domain). Custom-domain ops are not supported yet; adding them requires
+domain-aware handler registration and matching pre-scan logic in `convert.rs`.
 
 ## Layout (committed)
 
@@ -88,9 +130,15 @@ Install: `pip install -r requirements.txt` (from repo root; needs `onnx`, `numpy
 Regenerate conversion tests after changing handlers or the manifest:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\generate_rust_op_conversion_tests.py --fixture-opset 26 --test-opset 18
+.\.venv\Scripts\python.exe scripts\generate_rust_op_conversion_tests.py --min-opset 9 --max-opset 26
 cargo test --test onnx_op_tests
 ```
+
+The generator emits **one test per distinct ONNX schema structure** per operator (not a full
+opset×op matrix). It compares schema fingerprints (inputs, outputs, attribute names) across ONNX
+history and tests the highest buildable opset in each band — e.g. `Pad` at opsets 10, 17, and 26
+(attribute `pads` vs input `pads` vs optional `axes` input). Ops with unchanged structure get a
+single test at the newest opset. Unbuildable ops get an `#[ignore]` stub.
 
 See [docs/operator-conversion-plan.md](docs/operator-conversion-plan.md) for the full operator rollout workflow.
 
@@ -102,5 +150,7 @@ See [docs/operator-conversion-plan.md](docs/operator-conversion-plan.md) for the
 
 ## Related (outside this repo)
 
+- [W3C WebNN API](https://www.w3.org/TR/webnn/) — operator spec (`MLGraphBuilder` methods)
 - [rustnn](../rustnn) — `MLGraphBuilder`, shape inference, ORT backend
+- [webnn-onnx-utils](../webnn-onnx-utils) — ONNX↔WebNN name mapping, protos, dtypes
 - [webnn-graph](../webnn-graph) — sibling project; lowering in `src/onnx/` was extracted from it

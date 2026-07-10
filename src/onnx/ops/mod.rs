@@ -177,6 +177,20 @@ impl OpRegistry {
         OpRegistry { handlers }
     }
 
+    /// Returns true if any registered handler claims support for `op_type`.
+    ///
+    /// This mirrors the dispatch in [`convert_node`], but performs no conversion. It lets the
+    /// converter fail fast with a clean [`OnnxError::UnsupportedOp`] before graph setup (input and
+    /// initializer registration) can panic on tensor kinds an unsupported op happens to use
+    /// (e.g. bool/string initializers).
+    ///
+    /// **Domain:** matches on `op_type` only today (standard `ai.onnx` operators). When
+    /// custom-domain handlers are added, this should take `(domain, op_type)` so the pre-scan in
+    /// `convert_with_builder` stays aligned with [`convert_node`].
+    pub fn is_supported(&self, op_type: &str) -> bool {
+        self.handlers.iter().any(|h| h.supports(op_type))
+    }
+
     /// Convert an ONNX node using the appropriate handler and apply to the MLGraphBuilder.
     pub fn convert_node<'a>(
         &self,

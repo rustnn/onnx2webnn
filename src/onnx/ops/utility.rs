@@ -99,6 +99,62 @@ impl UtilityHandler {
         Ok(ConversionResult::default())
     }
 
+    fn read_scalar_f64(&self, name: &str, context: &ConversionContext) -> Option<f64> {
+        use crate::protos::onnx::TensorProto_DataType;
+        if let Some(t) = context.initializers.get(name) {
+            if t.data_type == TensorProto_DataType::Float as i32 {
+                if !t.float_data.is_empty() {
+                    return Some(f64::from(t.float_data[0]));
+                }
+                let raw = t.raw_data.as_slice();
+                if raw.len() >= 4 {
+                    let bits = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
+                    return Some(f64::from(f32::from_bits(bits)));
+                }
+            }
+            if t.data_type == TensorProto_DataType::Double as i32 {
+                if !t.double_data.is_empty() {
+                    return Some(t.double_data[0]);
+                }
+                let raw = t.raw_data.as_slice();
+                if raw.len() >= 8 {
+                    let bits = u64::from_le_bytes([
+                        raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
+                    ]);
+                    return Some(f64::from_bits(bits));
+                }
+            }
+        }
+        // Integer initializers / folded consts represent exact values.
+        self.read_scalar_i64(name, context).map(|v| v as f64)
+    }
+
+    /// Element type of an ONNX `Range` (all three inputs share type `T`).
+    ///
+    /// Returns `Float32` for float/double/float16 inputs, otherwise `Int64`. `float64`/`float16`
+    /// range values are materialized as `float32` constants (WebNN has no `range` op; the range is
+    /// emitted as a constant tensor).
+    fn range_element_type(&self, inputs: &[String], context: &ConversionContext) -> DataType {
+        use crate::protos::onnx::TensorProto_DataType;
+        for name in inputs.iter().take(3) {
+            if let Some(t) = context.initializers.get(name.as_str()) {
+                let dt = t.data_type;
+                if dt == TensorProto_DataType::Float as i32
+                    || dt == TensorProto_DataType::Double as i32
+                    || dt == TensorProto_DataType::Float16 as i32
+                {
+                    return DataType::Float32;
+                }
+            }
+            if let Some(dt) = context.value_types.get(name.as_str()) {
+                if matches!(dt, DataType::Float32 | DataType::Float16) {
+                    return DataType::Float32;
+                }
+            }
+        }
+        DataType::Int64
+    }
+
     fn read_scalar_i64(&self, name: &str, context: &ConversionContext) -> Option<i64> {
         if let Some(vals) = context.const_values.get(name) {
             return vals.first().copied();
@@ -123,6 +179,11 @@ impl UtilityHandler {
         None
     }
 
+    fn scalar_as_i64(&self, name: &str, context: &ConversionContext) -> Option<i64> {
+        self.read_scalar_i64(name, context)
+            .or_else(|| self.read_scalar_f64(name, context).map(|v| v as i64))
+    }
+
     fn convert_range(
         &self,
         node: &NodeProto,
@@ -144,9 +205,15 @@ impl UtilityHandler {
             sanitize_identifier(&node.output.as_slice()[0].to_string())
         };
 
-        let start = self.read_scalar_i64(&inputs[0], context);
-        let limit = self.read_scalar_i64(&inputs[1], context);
-        let delta = self.read_scalar_i64(&inputs[2], context);
+        // Float ranges materialize a float32 constant. The dynamic (symbolic-dim) path below is
+        // integer-only — it exists to express runtime shape dimensions, which are always integral.
+        if self.range_element_type(inputs, context) == DataType::Float32 {
+            return self.convert_range_static_float(node, node_name, &output_name, context, b);
+        }
+
+        let start = self.scalar_as_i64(&inputs[0], context);
+        let limit = self.scalar_as_i64(&inputs[1], context);
+        let delta = self.scalar_as_i64(&inputs[2], context);
 
         let start_dim = crate::onnx::shape_inference::dynamic_scalar_dimension_for_value(
             &inputs[0],
@@ -291,6 +358,77 @@ impl UtilityHandler {
             result.output_types.insert(out.to_string(), DataType::Int64);
         }
 
+        Ok(result)
+    }
+
+    /// Fully-static float `Range`: emit the sequence as a `float32` constant.
+    ///
+    /// ONNX defines the length as `max(ceil((limit - start) / delta), 0)` and element `i` as
+    /// `start + i * delta`. Indexing by `i` (rather than accumulating) avoids float drift.
+    fn convert_range_static_float(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        output_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        let start = self.read_scalar_f64(&inputs[0], context).ok_or_else(|| {
+            OnnxError::InvalidShape(format!(
+                "Range {node_name} requires a constant scalar start input"
+            ))
+        })?;
+        let limit = self.read_scalar_f64(&inputs[1], context).ok_or_else(|| {
+            OnnxError::InvalidShape(format!(
+                "Range {node_name} requires a constant scalar limit input"
+            ))
+        })?;
+        let delta = self.read_scalar_f64(&inputs[2], context).ok_or_else(|| {
+            OnnxError::InvalidShape(format!(
+                "Range {node_name} requires a constant scalar delta input"
+            ))
+        })?;
+
+        if delta == 0.0 {
+            return Err(OnnxError::InvalidShape(
+                "Range delta cannot be zero".to_string(),
+            ));
+        }
+
+        let count = ((limit - start) / delta).ceil();
+        let count = if count.is_finite() && count > 0.0 {
+            count as usize
+        } else {
+            0
+        };
+
+        let mut values: Vec<f32> = (0..count)
+            .map(|i| (start + (i as f64) * delta) as f32)
+            .collect();
+        // WebNN constants cannot be zero-length; match the integer path which emits one element
+        // for an empty range.
+        if values.is_empty() {
+            values.push(0.0);
+        }
+
+        let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+        b.register_constant_from_bytes(
+            output_name,
+            DataType::Float32,
+            &[values.len() as u32],
+            &bytes,
+        )?;
+        if let Some(out) = node.output.as_slice().first() {
+            record_node_output(b, out, output_name, b.resolve_operand(output_name)?);
+        }
+
+        let mut result = ConversionResult::default();
+        if let Some(out) = node.output.as_slice().first() {
+            result
+                .output_types
+                .insert(out.to_string(), DataType::Float32);
+        }
         Ok(result)
     }
 
@@ -971,6 +1109,85 @@ mod tests {
             ..Default::default()
         };
         node.attribute.push(attr);
+    }
+
+    fn f32_scalar(value: f32) -> TensorProto {
+        TensorProto {
+            data_type: TensorProto_DataType::Float as i32,
+            dims: vec![],
+            raw_data: value.to_le_bytes().to_vec(),
+            ..Default::default()
+        }
+    }
+
+    fn i64_scalar(value: i64) -> TensorProto {
+        TensorProto {
+            data_type: TensorProto_DataType::Int64 as i32,
+            dims: vec![],
+            raw_data: value.to_le_bytes().to_vec(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_convert_range_float_fractional() {
+        let handler = UtilityHandler;
+        let node = create_test_node("Range", vec!["start", "limit", "delta"], vec!["output"]);
+        let start = f32_scalar(1.0);
+        let limit = f32_scalar(2.0);
+        let delta = f32_scalar(0.25);
+        let mut initializers: std::collections::HashMap<String, &TensorProto> =
+            std::collections::HashMap::new();
+        initializers.insert("start".to_string(), &start);
+        initializers.insert("limit".to_string(), &limit);
+        initializers.insert("delta".to_string(), &delta);
+        let value_shapes = std::collections::HashMap::new();
+        let const_values = std::collections::HashMap::new();
+        let value_ids = std::collections::HashMap::new();
+        let value_types = std::collections::HashMap::new();
+        let context = ConversionContext {
+            initializers: &initializers,
+            value_shapes: &value_shapes,
+            value_shape_dims: crate::onnx::ops::empty_value_shape_dims(),
+            const_values: &const_values,
+            value_ids: &value_ids,
+            value_types: &value_types,
+        };
+
+        // Previously `delta` truncated to 0 and errored; now it builds a float32 range.
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        assert_eq!(result.output_types.get("output"), Some(&DataType::Float32));
+    }
+
+    #[test]
+    fn test_convert_range_integer_stays_int64() {
+        let handler = UtilityHandler;
+        let node = create_test_node("Range", vec!["start", "limit", "delta"], vec!["output"]);
+        let start = i64_scalar(0);
+        let limit = i64_scalar(4);
+        let delta = i64_scalar(1);
+        let mut initializers: std::collections::HashMap<String, &TensorProto> =
+            std::collections::HashMap::new();
+        initializers.insert("start".to_string(), &start);
+        initializers.insert("limit".to_string(), &limit);
+        initializers.insert("delta".to_string(), &delta);
+        let value_shapes = std::collections::HashMap::new();
+        let const_values = std::collections::HashMap::new();
+        let value_ids = std::collections::HashMap::new();
+        let value_types = std::collections::HashMap::new();
+        let context = ConversionContext {
+            initializers: &initializers,
+            value_shapes: &value_shapes,
+            value_shape_dims: crate::onnx::ops::empty_value_shape_dims(),
+            const_values: &const_values,
+            value_ids: &value_ids,
+            value_types: &value_types,
+        };
+
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        assert_eq!(result.output_types.get("output"), Some(&DataType::Int64));
     }
 
     #[test]

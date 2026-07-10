@@ -41,8 +41,8 @@ pub struct ValidatedGraph<'ctx> {
     pub graph: MLGraph<'ctx>,
 }
 
-const MIN_SUPPORTED_OPSET: i64 = 11;
-const MAX_SUPPORTED_OPSET: i64 = 18;
+const MIN_SUPPORTED_OPSET: i64 = 9;
+const MAX_SUPPORTED_OPSET: i64 = 26;
 
 /// ONNX ops that lower to WebNN element-wise logical ops and must emit `uint8` outputs.
 /// Do not inline-fold them as integer constants (e.g. i64), since `where()` requires uint8 conditions.
@@ -212,6 +212,41 @@ impl OnnxConverter {
         }
 
         let onnx_graph = self.model.graph.as_ref().unwrap();
+
+        // Fail fast on unsupported operators before any graph setup. Input/initializer
+        // registration below can error on tensor kinds an unsupported op happens to use
+        // (e.g. bool/string initializers), which would otherwise mask the real cause with a
+        // confusing shape/builder error instead of a clean `UnsupportedOp`.
+        //
+        // **Domain behavior (today):** the pre-scan keys handlers by `op_type` only; per-node
+        // `domain` (when present on `NodeProto`) is not consulted. That matches
+        // [`OpRegistry::convert_node`] and [`OpRegistry::is_supported`]. Opset gating above
+        // applies only to the standard `ai.onnx` domain (empty or `"ai.onnx"` import); other
+        // `opset_import` entries are not version-checked yet.
+        //
+        // **Custom / vendor domains later:** to support non-official ops (e.g.
+        // `com.microsoft.FusedConv`), extend handlers to register on `(domain, op_type)` and
+        // update this loop to use the same key. Until then, a custom-domain node whose `op_type`
+        // collides with an `ai.onnx` name may pass the pre-scan and be lowered incorrectly —
+        // domain-aware dispatch is required before enabling those graphs.
+        {
+            let registry = crate::onnx::ops::OpRegistry::new();
+            for node in onnx_graph.node.as_slice() {
+                let op_type = node.op_type.as_str();
+                if !registry.is_supported(op_type) {
+                    let node_name = if node.name.is_empty() {
+                        "<unnamed>".to_string()
+                    } else {
+                        node.name.clone()
+                    };
+                    return Err(OnnxError::UnsupportedOp {
+                        op: op_type.to_string(),
+                        node: node_name,
+                    });
+                }
+            }
+        }
+
         let mut value_name_map: HashMap<String, String> = HashMap::new();
         let mut effective_overrides = options.free_dim_overrides.clone();
         let mut inference_overrides = effective_overrides.clone();

@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_NegativeLogLikelihoodLoss_graph",
-            vec![
-                f32_input("input", &[2, 3]),
-                i32_input("target", &[2]),
-            ],
-            vec![
-                f32_output("output", &[]),
-            ],
-            vec![
-                node(
-                    "NegativeLogLikelihoodLoss",
-                    "test",
-                    &["input", "target"],
-                    &["output"],
-                    &[
-                        attr_string("reduction", "mean"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[2, 3]), i32_input("target", &[2])],
+            vec![f32_output("output", &[])],
+            vec![node(
+                "NegativeLogLikelihoodLoss",
+                "test",
+                &["input", "target"],
+                &["output"],
+                &[attr_string("reduction", "mean")],
+            )],
+            vec![],
         ),
     )
 }

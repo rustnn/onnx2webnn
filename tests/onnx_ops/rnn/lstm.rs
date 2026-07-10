@@ -21,22 +21,15 @@ fn build_fixture_opset_13() -> ModelProto {
                 f32_input("R", &[1, 16, 4]),
                 f32_input("B", &[1, 32]),
             ],
-            vec![
-                f32_output("Y", &[1, 1, 4]),
-            ],
-            vec![
-                node(
-                    "LSTM",
-                    "test_LSTM",
-                    &["X", "W", "R", "B"],
-                    &["Y"],
-                    &[
-                        attr_int("hidden_size", 4),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("Y", &[1, 1, 4])],
+            vec![node(
+                "LSTM",
+                "test_LSTM",
+                &["X", "W", "R", "B"],
+                &["Y"],
+                &[attr_int("hidden_size", 4)],
+            )],
+            vec![],
         ),
     )
 }
@@ -59,22 +52,15 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("R", &[1, 16, 4]),
                 f32_input("B", &[1, 32]),
             ],
-            vec![
-                f32_output("Y", &[1, 1, 4]),
-            ],
-            vec![
-                node(
-                    "LSTM",
-                    "test_LSTM",
-                    &["X", "W", "R", "B"],
-                    &["Y"],
-                    &[
-                        attr_int("hidden_size", 4),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("Y", &[1, 1, 4])],
+            vec![node(
+                "LSTM",
+                "test_LSTM",
+                &["X", "W", "R", "B"],
+                &["Y"],
+                &[attr_int("hidden_size", 4)],
+            )],
+            vec![],
         ),
     )
 }

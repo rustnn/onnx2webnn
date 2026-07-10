@@ -15,22 +15,21 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ConvInteger_graph",
+            vec![],
+            vec![i32_output("y", &[1, 1, 4, 4])],
+            vec![node(
+                "ConvInteger",
+                "test",
+                &["x", "w", "x_zero_point", "w_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
-            ],
-            vec![
-                i32_output("y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "ConvInteger",
-                    "test",
-                    &["x", "w", "x_zero_point", "w_zero_point"],
-                    &["y"],
-                    &[],
+                u8_init(
+                    "x",
+                    &[1, 1, 4, 4],
+                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
                 ),
-            ],
-            vec![
-                u8_init("x", &[1, 1, 4, 4], &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
                 u8_init("w", &[1, 1, 1, 1], &[1]),
                 u8_init("x_zero_point", &[], &[0]),
                 u8_init("w_zero_point", &[], &[0]),

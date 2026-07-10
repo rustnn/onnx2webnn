@@ -12,9 +12,7 @@ use crate::protos::onnx::{
 
 fn dim_value(value: i64) -> crate::protos::onnx::tensor_shape_proto::Dimension {
     crate::protos::onnx::tensor_shape_proto::Dimension {
-        value: Some(
-            crate::protos::onnx::tensor_shape_proto::dimension::Value::DimValue(value),
-        ),
+        value: Some(crate::protos::onnx::tensor_shape_proto::dimension::Value::DimValue(value)),
         denotation: String::new(),
     }
 }

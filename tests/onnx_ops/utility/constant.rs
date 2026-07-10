@@ -15,24 +15,16 @@ fn build_fixture_opset_10() -> ModelProto {
         10,
         graph(
             "test_Constant_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[]),
-            ],
-            vec![
-                node(
-                    "Constant",
-                    "test_Constant",
-                    &[],
-                    &["output"],
-                    &[
-                        attr_tensor("value", f32_init("value", &[], &[1.0])),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![],
+            vec![f32_output("output", &[])],
+            vec![node(
+                "Constant",
+                "test_Constant",
+                &[],
+                &["output"],
+                &[attr_tensor("value", f32_init("value", &[], &[1.0]))],
+            )],
+            vec![],
         ),
     )
 }
@@ -49,24 +41,16 @@ fn build_fixture_opset_11() -> ModelProto {
         11,
         graph(
             "test_Constant_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[]),
-            ],
-            vec![
-                node(
-                    "Constant",
-                    "test_Constant",
-                    &[],
-                    &["output"],
-                    &[
-                        attr_tensor("value", f32_init("value", &[], &[1.0])),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![],
+            vec![f32_output("output", &[])],
+            vec![node(
+                "Constant",
+                "test_Constant",
+                &[],
+                &["output"],
+                &[attr_tensor("value", f32_init("value", &[], &[1.0]))],
+            )],
+            vec![],
         ),
     )
 }
@@ -83,24 +67,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Constant_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[]),
-            ],
-            vec![
-                node(
-                    "Constant",
-                    "test_Constant",
-                    &[],
-                    &["output"],
-                    &[
-                        attr_tensor("value", f32_init("value", &[], &[1.0])),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![],
+            vec![f32_output("output", &[])],
+            vec![node(
+                "Constant",
+                "test_Constant",
+                &[],
+                &["output"],
+                &[attr_tensor("value", f32_init("value", &[], &[1.0]))],
+            )],
+            vec![],
         ),
     )
 }

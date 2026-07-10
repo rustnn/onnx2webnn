@@ -19,22 +19,15 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("X", &[1, 1, 4, 4]),
                 f32_input("grid", &[1, 4, 4, 2]),
             ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "GridSample",
-                    "test",
-                    &["X", "grid"],
-                    &["Y"],
-                    &[
-                        attr_string("mode", "bilinear"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "GridSample",
+                "test",
+                &["X", "grid"],
+                &["Y"],
+                &[attr_string("mode", "bilinear")],
+            )],
+            vec![],
         ),
     )
 }

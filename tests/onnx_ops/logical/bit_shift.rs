@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_BitShift_graph",
-            vec![
-            ],
-            vec![
-                u8_output("Z", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "BitShift",
-                    "test_BitShift",
-                    &["X", "Y"],
-                    &["Z"],
-                    &[
-                        attr_string("direction", "LEFT"),
-                    ],
-                ),
-            ],
-            vec![
-                u8_init("X", &[2], &[1, 2]),
-                u8_init("Y", &[], &[1]),
-            ],
+            vec![],
+            vec![u8_output("Z", &[1, 2])],
+            vec![node(
+                "BitShift",
+                "test_BitShift",
+                &["X", "Y"],
+                &["Z"],
+                &[attr_string("direction", "LEFT")],
+            )],
+            vec![u8_init("X", &[2], &[1, 2]), u8_init("Y", &[], &[1])],
         ),
     )
 }

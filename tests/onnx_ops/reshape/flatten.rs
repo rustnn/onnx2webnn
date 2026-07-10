@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Flatten_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Flatten",
-                    "test_Flatten",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("axis", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Flatten",
+                "test_Flatten",
+                &["input"],
+                &["output"],
+                &[attr_int("axis", 1)],
+            )],
+            vec![],
         ),
     )
 }

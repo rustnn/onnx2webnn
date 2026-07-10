@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_EyeLike_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "EyeLike",
-                    "test_EyeLike",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("k", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "EyeLike",
+                "test_EyeLike",
+                &["input"],
+                &["output"],
+                &[attr_int("k", 0)],
+            )],
+            vec![],
         ),
     )
 }

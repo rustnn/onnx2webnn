@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Round_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Round",
-                    "test_Round",
-                    &["X"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node("Round", "test_Round", &["X"], &["Y"], &[])],
+            vec![],
         ),
     )
 }

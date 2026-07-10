@@ -15,23 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_OptionalGetElement_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "OptionalGetElement",
-                    "test_OptionalGetElement",
-                    &["input"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "OptionalGetElement",
+                "test_OptionalGetElement",
+                &["input"],
+                &["output"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

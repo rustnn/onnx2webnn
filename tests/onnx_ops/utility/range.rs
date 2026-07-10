@@ -15,20 +15,15 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Range_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[3]),
-            ],
-            vec![
-                node(
-                    "Range",
-                    "test",
-                    &["start", "limit", "delta"],
-                    &["output"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![f32_output("output", &[3])],
+            vec![node(
+                "Range",
+                "test",
+                &["start", "limit", "delta"],
+                &["output"],
+                &[],
+            )],
             vec![
                 f32_init("start", &[], &[0.5]),
                 f32_init("limit", &[], &[2.0]),

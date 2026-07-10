@@ -15,23 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Transpose_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("transposed", &[2, 1]),
-            ],
-            vec![
-                node(
-                    "Transpose",
-                    "test_Transpose",
-                    &["data"],
-                    &["transposed"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("transposed", &[2, 1])],
+            vec![node(
+                "Transpose",
+                "test_Transpose",
+                &["data"],
+                &["transposed"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

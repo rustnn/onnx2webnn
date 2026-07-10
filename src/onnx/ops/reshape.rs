@@ -24,12 +24,12 @@ use crate::onnx::builder_helpers::{
     merge_dims_with_static_values, output_label, record_node_output, reshape_with_shape,
     u32_slice_to_mldim,
 };
-use crate::onnx::shape_inference::value_shape_dims_for;
 use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::onnx::ops::{
     normalize_axes_best_effort, normalize_axis_best_effort, ConversionContext, ConversionResult,
     OpHandler,
 };
+use crate::onnx::shape_inference::value_shape_dims_for;
 use crate::protos::onnx::{NodeProto, TensorProto_DataType};
 use rustnn::operator_options::{
     MLDimension, MLSplitOptions, MLSqueezeOptions, MLTransposeOptions, MLUnsqueezeOptions,
@@ -76,7 +76,7 @@ impl OpHandler for ReshapeHandler {
             "Tile" => self.convert_tile(node, &node_name, context, b),
             "Expand" => self.convert_expand(node, &node_name, context, b),
             "Flatten" => self.convert_flatten(node, &node_name, context, b),
-            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -283,7 +283,8 @@ impl ReshapeHandler {
         // Fallback: derive shape from known output/shape-input metadata when the shape tensor isn't const.
         if shape_values.is_empty() {
             if let Some(out) = node.output.as_slice().first() {
-                if let Some(output_dims) = value_shape_dims_for(out.as_str(), &context.value_shape_dims)
+                if let Some(output_dims) =
+                    value_shape_dims_for(out.as_str(), &context.value_shape_dims)
                 {
                     if !output_dims.is_empty() {
                         let new_shape = ast_dims_to_mldim(output_dims);
@@ -674,7 +675,9 @@ impl ReshapeHandler {
             output_dim_shape.as_ref().and_then(|dims| {
                 merge_dims_with_i64_values(dims, &shape_values).or_else(|| {
                     if shape_values.is_empty()
-                        && dims.iter().any(|d| matches!(d, rustnn::graph::Dimension::Dynamic(_)))
+                        && dims
+                            .iter()
+                            .any(|d| matches!(d, rustnn::graph::Dimension::Dynamic(_)))
                     {
                         Some(ast_dims_to_mldim(dims))
                     } else {
@@ -938,9 +941,8 @@ impl ReshapeHandler {
             split_values
                 .iter()
                 .map(|&v| {
-                    u32::try_from(v).map_err(|_| {
-                        OnnxError::InvalidShape(format!("invalid split size: {v}"))
-                    })
+                    u32::try_from(v)
+                        .map_err(|_| OnnxError::InvalidShape(format!("invalid split size: {v}")))
                 })
                 .collect::<Result<_, _>>()?
         } else {
@@ -1170,18 +1172,13 @@ impl ReshapeHandler {
         let reps_u32: Vec<u32> = repeats
             .iter()
             .map(|&v| {
-                u32::try_from(v).map_err(|_| {
-                    OnnxError::InvalidShape(format!("invalid tile repetition: {v}"))
-                })
+                u32::try_from(v)
+                    .map_err(|_| OnnxError::InvalidShape(format!("invalid tile repetition: {v}")))
             })
             .collect::<Result<_, _>>()?;
         let out = b
             .builder
-            .tile_with_options(
-                input0,
-                reps_u32,
-                OnnxBuilder::labeled_options(&output_name),
-            )
+            .tile_with_options(input0, reps_u32, OnnxBuilder::labeled_options(&output_name))
             .map_err(map_op_error)?;
         Self::record_output(b, node, &output_name, out, context, Some(&inputs[0]))
     }

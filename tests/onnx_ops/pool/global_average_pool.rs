@@ -15,23 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_GlobalAveragePool_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 1, 1]),
-            ],
-            vec![
-                node(
-                    "GlobalAveragePool",
-                    "test_GlobalAveragePool",
-                    &["X"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 1, 1])],
+            vec![node(
+                "GlobalAveragePool",
+                "test_GlobalAveragePool",
+                &["X"],
+                &["Y"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

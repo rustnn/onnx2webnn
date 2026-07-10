@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_IsNaN_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                bool_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "IsNaN",
-                    "test_IsNaN",
-                    &["X"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![bool_output("Y", &[1, 2])],
+            vec![node("IsNaN", "test_IsNaN", &["X"], &["Y"], &[])],
+            vec![],
         ),
     )
 }

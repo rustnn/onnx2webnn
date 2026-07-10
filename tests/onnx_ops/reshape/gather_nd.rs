@@ -15,24 +15,16 @@ fn build_fixture_opset_11() -> ModelProto {
         11,
         graph(
             "test_GatherND_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "GatherND",
-                    "test_GatherND",
-                    &["data", "indices"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[1, 1], &[0]),
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "GatherND",
+                "test_GatherND",
+                &["data", "indices"],
+                &["output"],
+                &[],
+            )],
+            vec![i64_init("indices", &[1, 1], &[0])],
         ),
     )
 }
@@ -49,26 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_GatherND_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "GatherND",
-                    "test_GatherND",
-                    &["data", "indices"],
-                    &["output"],
-                    &[
-                        attr_int("batch_dims", 0),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[1, 1], &[0]),
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "GatherND",
+                "test_GatherND",
+                &["data", "indices"],
+                &["output"],
+                &[attr_int("batch_dims", 0)],
+            )],
+            vec![i64_init("indices", &[1, 1], &[0])],
         ),
     )
 }

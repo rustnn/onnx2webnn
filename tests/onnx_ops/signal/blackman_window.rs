@@ -15,23 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_BlackmanWindow_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[8]),
-            ],
-            vec![
-                node(
-                    "BlackmanWindow",
-                    "test_BlackmanWindow",
-                    &["size"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("size", &[], &[8]),
-            ],
+            vec![],
+            vec![f32_output("output", &[8])],
+            vec![node(
+                "BlackmanWindow",
+                "test_BlackmanWindow",
+                &["size"],
+                &["output"],
+                &[],
+            )],
+            vec![i64_init("size", &[], &[8])],
         ),
     )
 }

@@ -15,27 +15,20 @@ fn build_fixture_opset_9() -> ModelProto {
         9,
         graph(
             "test_AveragePool_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "AveragePool",
-                    "test_AveragePool",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_ints("kernel_shape", &[2, 2]),
-                        attr_int("count_include_pad", 0),
-                        attr_string("auto_pad", "NOTSET"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "AveragePool",
+                "test_AveragePool",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_ints("kernel_shape", &[2, 2]),
+                    attr_int("count_include_pad", 0),
+                    attr_string("auto_pad", "NOTSET"),
+                ],
+            )],
+            vec![],
         ),
     )
 }
@@ -52,28 +45,21 @@ fn build_fixture_opset_18() -> ModelProto {
         18,
         graph(
             "test_AveragePool_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "AveragePool",
-                    "test_AveragePool",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_ints("kernel_shape", &[2, 2]),
-                        attr_int("count_include_pad", 0),
-                        attr_string("auto_pad", "NOTSET"),
-                        attr_int("ceil_mode", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "AveragePool",
+                "test_AveragePool",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_ints("kernel_shape", &[2, 2]),
+                    attr_int("count_include_pad", 0),
+                    attr_string("auto_pad", "NOTSET"),
+                    attr_int("ceil_mode", 0),
+                ],
+            )],
+            vec![],
         ),
     )
 }
@@ -90,28 +76,21 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_AveragePool_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "AveragePool",
-                    "test_AveragePool",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_ints("kernel_shape", &[2, 2]),
-                        attr_int("count_include_pad", 0),
-                        attr_string("auto_pad", "NOTSET"),
-                        attr_int("ceil_mode", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "AveragePool",
+                "test_AveragePool",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_ints("kernel_shape", &[2, 2]),
+                    attr_int("count_include_pad", 0),
+                    attr_string("auto_pad", "NOTSET"),
+                    attr_int("ceil_mode", 0),
+                ],
+            )],
+            vec![],
         ),
     )
 }

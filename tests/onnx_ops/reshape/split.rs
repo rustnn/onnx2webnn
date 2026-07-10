@@ -15,27 +15,16 @@ fn build_fixture_opset_12() -> ModelProto {
         12,
         graph(
             "test_Split_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("out0", &[1, 1]),
-                f32_output("out1", &[1, 1]),
-            ],
-            vec![
-                node(
-                    "Split",
-                    "test",
-                    &["input"],
-                    &["out0", "out1"],
-                    &[
-                        attr_int("axis", 1),
-                        attr_ints("split", &[1, 1]),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("out0", &[1, 1]), f32_output("out1", &[1, 1])],
+            vec![node(
+                "Split",
+                "test",
+                &["input"],
+                &["out0", "out1"],
+                &[attr_int("axis", 1), attr_ints("split", &[1, 1])],
+            )],
+            vec![],
         ),
     )
 }
@@ -52,27 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Split_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("out0", &[1, 1]),
-                f32_output("out1", &[1, 1]),
-            ],
-            vec![
-                node(
-                    "Split",
-                    "test",
-                    &["input"],
-                    &["out0", "out1"],
-                    &[
-                        attr_int("axis", 1),
-                        attr_int("num_outputs", 2),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("out0", &[1, 1]), f32_output("out1", &[1, 1])],
+            vec![node(
+                "Split",
+                "test",
+                &["input"],
+                &["out0", "out1"],
+                &[attr_int("axis", 1), attr_int("num_outputs", 2)],
+            )],
+            vec![],
         ),
     )
 }

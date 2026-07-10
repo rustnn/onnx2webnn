@@ -15,27 +15,20 @@ fn build_fixture_opset_9() -> ModelProto {
         9,
         graph(
             "test_MaxPool_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "MaxPool",
-                    "test_MaxPool",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_ints("kernel_shape", &[2, 2]),
-                        attr_string("auto_pad", "NOTSET"),
-                        attr_int("storage_order", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "MaxPool",
+                "test_MaxPool",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_ints("kernel_shape", &[2, 2]),
+                    attr_string("auto_pad", "NOTSET"),
+                    attr_int("storage_order", 0),
+                ],
+            )],
+            vec![],
         ),
     )
 }
@@ -52,28 +45,21 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_MaxPool_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "MaxPool",
-                    "test_MaxPool",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_ints("kernel_shape", &[2, 2]),
-                        attr_string("auto_pad", "NOTSET"),
-                        attr_int("ceil_mode", 0),
-                        attr_int("storage_order", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "MaxPool",
+                "test_MaxPool",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_ints("kernel_shape", &[2, 2]),
+                    attr_string("auto_pad", "NOTSET"),
+                    attr_int("ceil_mode", 0),
+                    attr_int("storage_order", 0),
+                ],
+            )],
+            vec![],
         ),
     )
 }

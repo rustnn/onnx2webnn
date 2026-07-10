@@ -15,27 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ReverseSequence_graph",
-            vec![
-                f32_input("input", &[3, 2, 4]),
-            ],
-            vec![
-                f32_output("Y", &[3, 2, 4]),
-            ],
-            vec![
-                node(
-                    "ReverseSequence",
-                    "test",
-                    &["input", "sequence_lens"],
-                    &["Y"],
-                    &[
-                        attr_int("batch_axis", 0),
-                        attr_int("time_axis", 1),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("sequence_lens", &[3], &[2, 2, 2]),
-            ],
+            vec![f32_input("input", &[3, 2, 4])],
+            vec![f32_output("Y", &[3, 2, 4])],
+            vec![node(
+                "ReverseSequence",
+                "test",
+                &["input", "sequence_lens"],
+                &["Y"],
+                &[attr_int("batch_axis", 0), attr_int("time_axis", 1)],
+            )],
+            vec![i64_init("sequence_lens", &[3], &[2, 2, 2])],
         ),
     )
 }

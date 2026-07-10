@@ -15,27 +15,20 @@ fn build_fixture_opset_10() -> ModelProto {
         10,
         graph(
             "test_Pad_graph",
-            vec![
-                f32_input("data", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("output", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "Pad",
-                    "test_Pad",
-                    &["data"],
-                    &["output"],
-                    &[
-                        attr_ints("pads", &[0, 0, 0, 0, 0, 0, 0, 0]),
-                        attr_float("value", 0.0),
-                        attr_string("mode", "constant"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 1, 4, 4])],
+            vec![f32_output("output", &[1, 1, 4, 4])],
+            vec![node(
+                "Pad",
+                "test_Pad",
+                &["data"],
+                &["output"],
+                &[
+                    attr_ints("pads", &[0, 0, 0, 0, 0, 0, 0, 0]),
+                    attr_float("value", 0.0),
+                    attr_string("mode", "constant"),
+                ],
+            )],
+            vec![],
         ),
     )
 }
@@ -52,26 +45,16 @@ fn build_fixture_opset_17() -> ModelProto {
         17,
         graph(
             "test_Pad_graph",
-            vec![
-                f32_input("data", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("output", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "Pad",
-                    "test_Pad",
-                    &["data", "pads"],
-                    &["output"],
-                    &[
-                        attr_string("mode", "constant"),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("pads", &[8], &[0, 0, 0, 0, 0, 0, 0, 1]),
-            ],
+            vec![f32_input("data", &[1, 1, 4, 4])],
+            vec![f32_output("output", &[1, 1, 4, 4])],
+            vec![node(
+                "Pad",
+                "test_Pad",
+                &["data", "pads"],
+                &["output"],
+                &[attr_string("mode", "constant")],
+            )],
+            vec![i64_init("pads", &[8], &[0, 0, 0, 0, 0, 0, 0, 1])],
         ),
     )
 }
@@ -88,26 +71,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Pad_graph",
-            vec![
-                f32_input("data", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("output", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "Pad",
-                    "test_Pad",
-                    &["data", "pads"],
-                    &["output"],
-                    &[
-                        attr_string("mode", "constant"),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("pads", &[8], &[0, 0, 0, 0, 0, 0, 0, 1]),
-            ],
+            vec![f32_input("data", &[1, 1, 4, 4])],
+            vec![f32_output("output", &[1, 1, 4, 4])],
+            vec![node(
+                "Pad",
+                "test_Pad",
+                &["data", "pads"],
+                &["output"],
+                &[attr_string("mode", "constant")],
+            )],
+            vec![i64_init("pads", &[8], &[0, 0, 0, 0, 0, 0, 0, 1])],
         ),
     )
 }

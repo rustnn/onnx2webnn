@@ -20,22 +20,15 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("scale", &[1]),
                 f32_input("B", &[1]),
             ],
-            vec![
-                f32_output("output", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "InstanceNormalization",
-                    "test_InstanceNormalization",
-                    &["input", "scale", "B"],
-                    &["output"],
-                    &[
-                        attr_float("epsilon", 9.999999747378752e-06),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("output", &[1, 1, 4, 4])],
+            vec![node(
+                "InstanceNormalization",
+                "test_InstanceNormalization",
+                &["input", "scale", "B"],
+                &["output"],
+                &[attr_float("epsilon", 9.999999747378752e-06)],
+            )],
+            vec![],
         ),
     )
 }

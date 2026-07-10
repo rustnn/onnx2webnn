@@ -15,22 +15,30 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_QLinearConv_graph",
+            vec![],
+            vec![u8_output("y", &[1, 1, 4, 4])],
+            vec![node(
+                "QLinearConv",
+                "test",
+                &[
+                    "x",
+                    "x_scale",
+                    "x_zero_point",
+                    "w",
+                    "w_scale",
+                    "w_zero_point",
+                    "y_scale",
+                    "y_zero_point",
+                ],
+                &["y"],
+                &[],
+            )],
             vec![
-            ],
-            vec![
-                u8_output("y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "QLinearConv",
-                    "test",
-                    &["x", "x_scale", "x_zero_point", "w", "w_scale", "w_zero_point", "y_scale", "y_zero_point"],
-                    &["y"],
-                    &[],
+                u8_init(
+                    "x",
+                    &[1, 1, 4, 4],
+                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
                 ),
-            ],
-            vec![
-                u8_init("x", &[1, 1, 4, 4], &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
                 f32_init("x_scale", &[], &[0.5]),
                 u8_init("x_zero_point", &[], &[0]),
                 u8_init("w", &[1, 1, 1, 1], &[1]),

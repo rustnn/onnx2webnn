@@ -15,11 +15,8 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_SequenceMap_graph",
-            vec![
-            ],
-            vec![
-                sequence_f32_output("out_sequence", &[1, 2]),
-            ],
+            vec![],
+            vec![sequence_f32_output("out_sequence", &[1, 2])],
             vec![
                 node(
                     "SequenceConstruct",
@@ -33,33 +30,19 @@ fn build_fixture_opset_26() -> ModelProto {
                     "test_SequenceMap",
                     &["input_sequence"],
                     &["out_sequence"],
-                    &[
-                        attr_graph("body", graph(
-                                "body",
-                                vec![
-                                    f32_input("current", &[1, 2]),
-                                ],
-                                vec![
-                                    f32_output("out", &[1, 2]),
-                                ],
-                                vec![
-                                    node(
-                                        "Identity",
-                                        "id_elem",
-                                        &["current"],
-                                        &["out"],
-                                        &[],
-                                    ),
-                                ],
-                                vec![
-                                ],
-                            )),
-                    ],
+                    &[attr_graph(
+                        "body",
+                        graph(
+                            "body",
+                            vec![f32_input("current", &[1, 2])],
+                            vec![f32_output("out", &[1, 2])],
+                            vec![node("Identity", "id_elem", &["current"], &["out"], &[])],
+                            vec![],
+                        ),
+                    )],
                 ),
             ],
-            vec![
-                f32_init("t0", &[1, 2], &[0.0, 0.0]),
-            ],
+            vec![f32_init("t0", &[1, 2], &[0.0, 0.0])],
         ),
     )
 }

@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Size_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                i64_output("size", &[]),
-            ],
-            vec![
-                node(
-                    "Size",
-                    "test_Size",
-                    &["data"],
-                    &["size"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![i64_output("size", &[])],
+            vec![node("Size", "test_Size", &["data"], &["size"], &[])],
+            vec![],
         ),
     )
 }

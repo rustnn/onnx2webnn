@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Min_graph",
-            vec![
-                f32_input("in0", &[1, 2]),
-            ],
-            vec![
-                f32_output("min", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Min",
-                    "test_Min",
-                    &["in0"],
-                    &["min"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("in0", &[1, 2])],
+            vec![f32_output("min", &[1, 2])],
+            vec![node("Min", "test_Min", &["in0"], &["min"], &[])],
+            vec![],
         ),
     )
 }

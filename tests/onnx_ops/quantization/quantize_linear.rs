@@ -15,21 +15,15 @@ fn build_fixture_opset_12() -> ModelProto {
         12,
         graph(
             "test_QuantizeLinear_graph",
-            vec![
-                f32_input("x", &[1, 2]),
-            ],
-            vec![
-                u8_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "QuantizeLinear",
-                    "test",
-                    &["x", "y_scale", "y_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![f32_input("x", &[1, 2])],
+            vec![u8_output("y", &[1, 2])],
+            vec![node(
+                "QuantizeLinear",
+                "test",
+                &["x", "y_scale", "y_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 f32_init("y_scale", &[], &[0.5]),
                 u8_init("y_zero_point", &[], &[0]),
@@ -50,21 +44,15 @@ fn build_fixture_opset_18() -> ModelProto {
         18,
         graph(
             "test_QuantizeLinear_graph",
-            vec![
-                f32_input("x", &[1, 2]),
-            ],
-            vec![
-                u8_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "QuantizeLinear",
-                    "test",
-                    &["x", "y_scale", "y_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![f32_input("x", &[1, 2])],
+            vec![u8_output("y", &[1, 2])],
+            vec![node(
+                "QuantizeLinear",
+                "test",
+                &["x", "y_scale", "y_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 f32_init("y_scale", &[], &[0.5]),
                 u8_init("y_zero_point", &[], &[0]),
@@ -85,21 +73,15 @@ fn build_fixture_opset_20() -> ModelProto {
         20,
         graph(
             "test_QuantizeLinear_graph",
-            vec![
-                f32_input("x", &[1, 2]),
-            ],
-            vec![
-                u8_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "QuantizeLinear",
-                    "test",
-                    &["x", "y_scale", "y_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![f32_input("x", &[1, 2])],
+            vec![u8_output("y", &[1, 2])],
+            vec![node(
+                "QuantizeLinear",
+                "test",
+                &["x", "y_scale", "y_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 f32_init("y_scale", &[], &[0.5]),
                 u8_init("y_zero_point", &[], &[0]),
@@ -120,21 +102,15 @@ fn build_fixture_opset_22() -> ModelProto {
         22,
         graph(
             "test_QuantizeLinear_graph",
-            vec![
-                f32_input("x", &[1, 2]),
-            ],
-            vec![
-                u8_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "QuantizeLinear",
-                    "test",
-                    &["x", "y_scale", "y_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![f32_input("x", &[1, 2])],
+            vec![u8_output("y", &[1, 2])],
+            vec![node(
+                "QuantizeLinear",
+                "test",
+                &["x", "y_scale", "y_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 f32_init("y_scale", &[], &[0.5]),
                 u8_init("y_zero_point", &[], &[0]),
@@ -155,21 +131,15 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_QuantizeLinear_graph",
-            vec![
-                f32_input("x", &[1, 2]),
-            ],
-            vec![
-                u8_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "QuantizeLinear",
-                    "test",
-                    &["x", "y_scale", "y_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![f32_input("x", &[1, 2])],
+            vec![u8_output("y", &[1, 2])],
+            vec![node(
+                "QuantizeLinear",
+                "test",
+                &["x", "y_scale", "y_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 f32_init("y_scale", &[], &[0.5]),
                 u8_init("y_zero_point", &[], &[0]),

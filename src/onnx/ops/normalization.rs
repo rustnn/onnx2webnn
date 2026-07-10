@@ -38,7 +38,7 @@ impl OpHandler for NormalizationHandler {
         match op_type {
             "LayerNormalization" => self.convert_layer_norm(node, &node_name, context, b),
             "Softmax" => self.convert_softmax(node, &node_name, context, b),
-            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -195,7 +195,8 @@ mod tests {
     #[test]
     fn test_convert_layer_norm() {
         let handler = NormalizationHandler;
-        let mut node = create_test_node("LayerNormalization", vec!["x", "scale", "bias"], vec!["y"]);
+        let mut node =
+            create_test_node("LayerNormalization", vec!["x", "scale", "bias"], vec!["y"]);
         add_float_attribute(&mut node, "epsilon", 1e-5);
         add_int_attribute(&mut node, "axis", -1);
         crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();

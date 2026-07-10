@@ -15,26 +15,16 @@ fn build_fixture_opset_17() -> ModelProto {
         17,
         graph(
             "test_Resize_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 6, 6]),
-            ],
-            vec![
-                node(
-                    "Resize",
-                    "test",
-                    &["X", "", "sizes"],
-                    &["Y"],
-                    &[
-                        attr_string("mode", "nearest"),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("sizes", &[4], &[1, 1, 6, 6]),
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 6, 6])],
+            vec![node(
+                "Resize",
+                "test",
+                &["X", "", "sizes"],
+                &["Y"],
+                &[attr_string("mode", "nearest")],
+            )],
+            vec![i64_init("sizes", &[4], &[1, 1, 6, 6])],
         ),
     )
 }
@@ -51,26 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Resize_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 6, 6]),
-            ],
-            vec![
-                node(
-                    "Resize",
-                    "test",
-                    &["X", "", "sizes"],
-                    &["Y"],
-                    &[
-                        attr_string("mode", "nearest"),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("sizes", &[4], &[1, 1, 6, 6]),
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 6, 6])],
+            vec![node(
+                "Resize",
+                "test",
+                &["X", "", "sizes"],
+                &["Y"],
+                &[attr_string("mode", "nearest")],
+            )],
+            vec![i64_init("sizes", &[4], &[1, 1, 6, 6])],
         ),
     )
 }

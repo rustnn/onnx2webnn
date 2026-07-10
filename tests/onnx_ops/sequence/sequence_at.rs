@@ -15,26 +15,11 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_SequenceAt_graph",
+            vec![],
+            vec![f32_output("output", &[1, 2])],
             vec![
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "SequenceConstruct",
-                    "mk",
-                    &["t0"],
-                    &["seq"],
-                    &[],
-                ),
-                node(
-                    "SequenceAt",
-                    "test",
-                    &["seq", "position"],
-                    &["output"],
-                    &[],
-                ),
+                node("SequenceConstruct", "mk", &["t0"], &["seq"], &[]),
+                node("SequenceAt", "test", &["seq", "position"], &["output"], &[]),
             ],
             vec![
                 f32_init("t0", &[1, 2], &[0.0, 0.0]),

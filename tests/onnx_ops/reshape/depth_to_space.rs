@@ -15,25 +15,16 @@ fn build_fixture_opset_10() -> ModelProto {
         10,
         graph(
             "test_DepthToSpace_graph",
-            vec![
-                f32_input("input", &[1, 4, 4, 4]),
-            ],
-            vec![
-                f32_output("output", &[1, 4, 4, 4]),
-            ],
-            vec![
-                node(
-                    "DepthToSpace",
-                    "test_DepthToSpace",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("blocksize", 2),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 4, 4, 4])],
+            vec![f32_output("output", &[1, 4, 4, 4])],
+            vec![node(
+                "DepthToSpace",
+                "test_DepthToSpace",
+                &["input"],
+                &["output"],
+                &[attr_int("blocksize", 2)],
+            )],
+            vec![],
         ),
     )
 }
@@ -50,26 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_DepthToSpace_graph",
-            vec![
-                f32_input("input", &[1, 4, 4, 4]),
-            ],
-            vec![
-                f32_output("output", &[1, 4, 4, 4]),
-            ],
-            vec![
-                node(
-                    "DepthToSpace",
-                    "test_DepthToSpace",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("blocksize", 2),
-                        attr_string("mode", "DCR"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 4, 4, 4])],
+            vec![f32_output("output", &[1, 4, 4, 4])],
+            vec![node(
+                "DepthToSpace",
+                "test_DepthToSpace",
+                &["input"],
+                &["output"],
+                &[attr_int("blocksize", 2), attr_string("mode", "DCR")],
+            )],
+            vec![],
         ),
     )
 }

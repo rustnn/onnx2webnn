@@ -15,28 +15,20 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_LayerNormalization_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-                f32_input("Scale", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "LayerNormalization",
-                    "test_LayerNormalization",
-                    &["X", "Scale"],
-                    &["Y"],
-                    &[
-                        attr_int("axis", -1),
-                        attr_float("epsilon", 9.999999747378752e-06),
-                        attr_int("stash_type", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2]), f32_input("Scale", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "LayerNormalization",
+                "test_LayerNormalization",
+                &["X", "Scale"],
+                &["Y"],
+                &[
+                    attr_int("axis", -1),
+                    attr_float("epsilon", 9.999999747378752e-06),
+                    attr_int("stash_type", 1),
+                ],
+            )],
+            vec![],
         ),
     )
 }

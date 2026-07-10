@@ -15,24 +15,10 @@ fn build_fixture_opset_11() -> ModelProto {
         11,
         graph(
             "test_Pow_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-                f32_input("Y", &[1, 2]),
-            ],
-            vec![
-                f32_output("Z", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Pow",
-                    "test_Pow",
-                    &["X", "Y"],
-                    &["Z"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2]), f32_input("Y", &[1, 2])],
+            vec![f32_output("Z", &[1, 2])],
+            vec![node("Pow", "test_Pow", &["X", "Y"], &["Z"], &[])],
+            vec![],
         ),
     )
 }
@@ -49,24 +35,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Pow_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-                f32_input("Y", &[1, 2]),
-            ],
-            vec![
-                f32_output("Z", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Pow",
-                    "test_Pow",
-                    &["X", "Y"],
-                    &["Z"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2]), f32_input("Y", &[1, 2])],
+            vec![f32_output("Z", &[1, 2])],
+            vec![node("Pow", "test_Pow", &["X", "Y"], &["Z"], &[])],
+            vec![],
         ),
     )
 }

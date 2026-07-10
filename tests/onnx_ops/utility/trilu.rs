@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Trilu_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Trilu",
-                    "test_Trilu",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("upper", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Trilu",
+                "test_Trilu",
+                &["input"],
+                &["output"],
+                &[attr_int("upper", 1)],
+            )],
+            vec![],
         ),
     )
 }

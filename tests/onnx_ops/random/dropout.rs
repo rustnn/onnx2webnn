@@ -15,26 +15,16 @@ fn build_fixture_opset_9() -> ModelProto {
         9,
         graph(
             "test_Dropout_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-                bool_output("mask", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Dropout",
-                    "test_Dropout",
-                    &["data"],
-                    &["output", "mask"],
-                    &[
-                        attr_float("ratio", 0.5),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1, 2]), bool_output("mask", &[1, 2])],
+            vec![node(
+                "Dropout",
+                "test_Dropout",
+                &["data"],
+                &["output", "mask"],
+                &[attr_float("ratio", 0.5)],
+            )],
+            vec![],
         ),
     )
 }
@@ -51,26 +41,16 @@ fn build_fixture_opset_11() -> ModelProto {
         11,
         graph(
             "test_Dropout_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-                bool_output("mask", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Dropout",
-                    "test_Dropout",
-                    &["data"],
-                    &["output", "mask"],
-                    &[
-                        attr_float("ratio", 0.5),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1, 2]), bool_output("mask", &[1, 2])],
+            vec![node(
+                "Dropout",
+                "test_Dropout",
+                &["data"],
+                &["output", "mask"],
+                &[attr_float("ratio", 0.5)],
+            )],
+            vec![],
         ),
     )
 }
@@ -87,24 +67,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Dropout_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-                bool_output("mask", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Dropout",
-                    "test_Dropout",
-                    &["data"],
-                    &["output", "mask"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1, 2]), bool_output("mask", &[1, 2])],
+            vec![node(
+                "Dropout",
+                "test_Dropout",
+                &["data"],
+                &["output", "mask"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

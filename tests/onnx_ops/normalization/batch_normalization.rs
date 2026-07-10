@@ -15,24 +15,18 @@ fn build_fixture_opset_14() -> ModelProto {
         14,
         graph(
             "test_BatchNormalization_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "BatchNormalization",
-                    "test_BatchNormalization",
-                    &["X", "scale", "B", "input_mean", "input_var"],
-                    &["Y"],
-                    &[
-                        attr_float("epsilon", 9.999999747378752e-06),
-                        attr_int("training_mode", 0),
-                    ],
-                ),
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "BatchNormalization",
+                "test_BatchNormalization",
+                &["X", "scale", "B", "input_mean", "input_var"],
+                &["Y"],
+                &[
+                    attr_float("epsilon", 9.999999747378752e-06),
+                    attr_int("training_mode", 0),
+                ],
+            )],
             vec![
                 f32_init("scale", &[1], &[1.0]),
                 f32_init("B", &[1], &[0.0]),
@@ -55,24 +49,18 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_BatchNormalization_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "BatchNormalization",
-                    "test_BatchNormalization",
-                    &["X", "scale", "B", "input_mean", "input_var"],
-                    &["Y"],
-                    &[
-                        attr_float("epsilon", 9.999999747378752e-06),
-                        attr_int("training_mode", 0),
-                    ],
-                ),
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "BatchNormalization",
+                "test_BatchNormalization",
+                &["X", "scale", "B", "input_mean", "input_var"],
+                &["Y"],
+                &[
+                    attr_float("epsilon", 9.999999747378752e-06),
+                    attr_int("training_mode", 0),
+                ],
+            )],
             vec![
                 f32_init("scale", &[1], &[1.0]),
                 f32_init("B", &[1], &[0.0]),

@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Sum_graph",
-            vec![
-                f32_input("in0", &[1, 2]),
-            ],
-            vec![
-                f32_output("sum", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Sum",
-                    "test_Sum",
-                    &["in0"],
-                    &["sum"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("in0", &[1, 2])],
+            vec![f32_output("sum", &[1, 2])],
+            vec![node("Sum", "test_Sum", &["in0"], &["sum"], &[])],
+            vec![],
         ),
     )
 }

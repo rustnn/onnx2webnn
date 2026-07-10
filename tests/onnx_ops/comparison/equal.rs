@@ -15,24 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Equal_graph",
-            vec![
-                f32_input("A", &[1, 2]),
-                f32_input("B", &[1, 2]),
-            ],
-            vec![
-                bool_output("C", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Equal",
-                    "test_Equal",
-                    &["A", "B"],
-                    &["C"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("A", &[1, 2]), f32_input("B", &[1, 2])],
+            vec![bool_output("C", &[1, 2])],
+            vec![node("Equal", "test_Equal", &["A", "B"], &["C"], &[])],
+            vec![],
         ),
     )
 }

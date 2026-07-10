@@ -15,27 +15,16 @@ fn build_fixture_opset_9() -> ModelProto {
         9,
         graph(
             "test_Scatter_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-                f32_input("updates", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Scatter",
-                    "test_Scatter",
-                    &["data", "indices", "updates"],
-                    &["output"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[1, 2], &[0, 0]),
-            ],
+            vec![f32_input("data", &[1, 2]), f32_input("updates", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Scatter",
+                "test_Scatter",
+                &["data", "indices", "updates"],
+                &["output"],
+                &[attr_int("axis", 0)],
+            )],
+            vec![i64_init("indices", &[1, 2], &[0, 0])],
         ),
     )
 }

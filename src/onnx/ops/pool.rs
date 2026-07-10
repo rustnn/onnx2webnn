@@ -59,7 +59,7 @@ impl OpHandler for PoolHandler {
             "GlobalAveragePool" => {
                 self.convert_global_pool(node, &node_name, context, b, PoolKind::Average)
             }
-            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -203,7 +203,10 @@ fn build_pool_2d_options(
     }
 
     if matches!(kind, PoolKind::Average) && attrs.count_include_pad {
-        return Err(OnnxError::unsupported_op("AveragePool(count_include_pad=1)".to_string(), String::new(),));
+        return Err(OnnxError::unsupported_op(
+            "AveragePool(count_include_pad=1)".to_string(),
+            String::new(),
+        ));
     }
 
     let mut opts = MLPool2dOptions {
@@ -287,7 +290,10 @@ impl PoolHandler {
             )));
         }
         if matches!(kind, PoolKind::Max) && node.output.len() > 1 {
-            return Err(OnnxError::unsupported_op("MaxPool(with indices output)".to_string(), node_name.to_string(),));
+            return Err(OnnxError::unsupported_op(
+                "MaxPool(with indices output)".to_string(),
+                node_name.to_string(),
+            ));
         }
 
         let input_raw = inputs[0].as_str();
@@ -367,12 +373,7 @@ impl PoolHandler {
         let reshape_in_label = sanitize_identifier(&format!("{node_name}_x4d"));
         let pool_label = sanitize_identifier(&format!("{node_name}_pool2d"));
 
-        let in_4d = i64_slice_to_mldim(&[
-            input_shape[0],
-            input_shape[1],
-            input_shape[2],
-            1,
-        ])?;
+        let in_4d = i64_slice_to_mldim(&[input_shape[0], input_shape[1], input_shape[2], 1])?;
         let input = b.resolve_operand(input_raw)?;
         let x4d = b
             .builder
@@ -414,11 +415,7 @@ impl PoolHandler {
         let out_3d = i64_slice_to_mldim(&[input_shape[0], input_shape[1], spatial_out])?;
         let final_out = b
             .builder
-            .reshape_with_options(
-                pooled,
-                out_3d,
-                OnnxBuilder::labeled_options(output_name),
-            )
+            .reshape_with_options(pooled, out_3d, OnnxBuilder::labeled_options(output_name))
             .map_err(map_op_error)?;
 
         if let Some(onnx_out) = node.output.first() {
@@ -512,8 +509,7 @@ impl PoolHandler {
                 .map_err(map_op_error)?;
                 b.record_operand(&[&pool_label], pooled);
 
-                let out_3d =
-                    i64_slice_to_mldim(&[input_shape[0], input_shape[1], 1])?;
+                let out_3d = i64_slice_to_mldim(&[input_shape[0], input_shape[1], 1])?;
                 let final_out = b
                     .builder
                     .reshape_with_options(

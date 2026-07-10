@@ -15,66 +15,49 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_If_graph",
-            vec![
-            ],
-            vec![
-                f32_output("out", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "If",
-                    "test_If",
-                    &["cond"],
-                    &["out"],
-                    &[
-                        attr_graph("else_branch", graph(
-                                "else",
-                                vec![
-                                ],
-                                vec![
-                                    f32_output("else_out", &[1, 2]),
-                                ],
-                                vec![
-                                    node(
-                                        "Constant",
-                                        "",
-                                        &[],
-                                        &["else_out"],
-                                        &[
-                                            attr_tensor("value", f32_init("v", &[], &[2.0])),
-                                        ],
-                                    ),
-                                ],
-                                vec![
-                                ],
-                            )),
-                        attr_graph("then_branch", graph(
-                                "then",
-                                vec![
-                                ],
-                                vec![
-                                    f32_output("then_out", &[1, 2]),
-                                ],
-                                vec![
-                                    node(
-                                        "Constant",
-                                        "",
-                                        &[],
-                                        &["then_out"],
-                                        &[
-                                            attr_tensor("value", f32_init("v", &[], &[1.0])),
-                                        ],
-                                    ),
-                                ],
-                                vec![
-                                ],
-                            )),
-                    ],
-                ),
-            ],
-            vec![
-                bool_init("cond", &[], &[true]),
-            ],
+            vec![],
+            vec![f32_output("out", &[1, 2])],
+            vec![node(
+                "If",
+                "test_If",
+                &["cond"],
+                &["out"],
+                &[
+                    attr_graph(
+                        "else_branch",
+                        graph(
+                            "else",
+                            vec![],
+                            vec![f32_output("else_out", &[1, 2])],
+                            vec![node(
+                                "Constant",
+                                "",
+                                &[],
+                                &["else_out"],
+                                &[attr_tensor("value", f32_init("v", &[], &[2.0]))],
+                            )],
+                            vec![],
+                        ),
+                    ),
+                    attr_graph(
+                        "then_branch",
+                        graph(
+                            "then",
+                            vec![],
+                            vec![f32_output("then_out", &[1, 2])],
+                            vec![node(
+                                "Constant",
+                                "",
+                                &[],
+                                &["then_out"],
+                                &[attr_tensor("value", f32_init("v", &[], &[1.0]))],
+                            )],
+                            vec![],
+                        ),
+                    ),
+                ],
+            )],
+            vec![bool_init("cond", &[], &[true])],
         ),
     )
 }

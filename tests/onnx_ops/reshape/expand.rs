@@ -15,24 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Expand_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Expand",
-                    "test_Expand",
-                    &["input", "shape"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("shape", &[2], &[1, 2]),
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Expand",
+                "test_Expand",
+                &["input", "shape"],
+                &["output"],
+                &[],
+            )],
+            vec![i64_init("shape", &[2], &[1, 2])],
         ),
     )
 }

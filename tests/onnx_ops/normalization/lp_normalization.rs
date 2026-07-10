@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_LpNormalization_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "LpNormalization",
-                    "test_LpNormalization",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("axis", -1),
-                        attr_int("p", 2),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "LpNormalization",
+                "test_LpNormalization",
+                &["input"],
+                &["output"],
+                &[attr_int("axis", -1), attr_int("p", 2)],
+            )],
+            vec![],
         ),
     )
 }

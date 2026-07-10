@@ -15,27 +15,20 @@ fn build_fixture_opset_19() -> ModelProto {
         19,
         graph(
             "test_DFT_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "DFT",
-                    "test_DFT",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("onesided", 0),
-                        attr_int("axis", 1),
-                        attr_int("inverse", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "DFT",
+                "test_DFT",
+                &["input"],
+                &["output"],
+                &[
+                    attr_int("onesided", 0),
+                    attr_int("axis", 1),
+                    attr_int("inverse", 0),
+                ],
+            )],
+            vec![],
         ),
     )
 }
@@ -52,26 +45,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_DFT_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "DFT",
-                    "test_DFT",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("onesided", 0),
-                        attr_int("inverse", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "DFT",
+                "test_DFT",
+                &["input"],
+                &["output"],
+                &[attr_int("onesided", 0), attr_int("inverse", 0)],
+            )],
+            vec![],
         ),
     )
 }

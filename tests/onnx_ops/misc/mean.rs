@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Mean_graph",
-            vec![
-                f32_input("in0", &[1, 2]),
-            ],
-            vec![
-                f32_output("mean", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Mean",
-                    "test_Mean",
-                    &["in0"],
-                    &["mean"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("in0", &[1, 2])],
+            vec![f32_output("mean", &[1, 2])],
+            vec![node("Mean", "test_Mean", &["in0"], &["mean"], &[])],
+            vec![],
         ),
     )
 }

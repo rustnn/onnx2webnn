@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_RandomUniform_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "RandomUniform",
-                    "test_RandomUniform",
-                    &[],
-                    &["output"],
-                    &[
-                        attr_int("dtype", 1),
-                        attr_ints("shape", &[1, 2]),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "RandomUniform",
+                "test_RandomUniform",
+                &[],
+                &["output"],
+                &[attr_int("dtype", 1), attr_ints("shape", &[1, 2])],
+            )],
+            vec![],
         ),
     )
 }

@@ -15,42 +15,27 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Scan_graph",
-            vec![
-            ],
-            vec![
-                f32_output("out", &[1, 1, 2]),
-            ],
-            vec![
-                node(
-                    "Scan",
-                    "test_Scan",
-                    &["init", "scan"],
-                    &["out"],
-                    &[
-                        attr_graph("body", graph(
-                                "body",
-                                vec![
-                                    f32_input("scan_in", &[1, 2]),
-                                ],
-                                vec![
-                                    f32_output("scan_out", &[1, 2]),
-                                ],
-                                vec![
-                                    node(
-                                        "Identity",
-                                        "id",
-                                        &["scan_in"],
-                                        &["scan_out"],
-                                        &[],
-                                    ),
-                                ],
-                                vec![
-                                ],
-                            )),
-                        attr_int("num_scan_inputs", 1),
-                    ],
-                ),
-            ],
+            vec![],
+            vec![f32_output("out", &[1, 1, 2])],
+            vec![node(
+                "Scan",
+                "test_Scan",
+                &["init", "scan"],
+                &["out"],
+                &[
+                    attr_graph(
+                        "body",
+                        graph(
+                            "body",
+                            vec![f32_input("scan_in", &[1, 2])],
+                            vec![f32_output("scan_out", &[1, 2])],
+                            vec![node("Identity", "id", &["scan_in"], &["scan_out"], &[])],
+                            vec![],
+                        ),
+                    ),
+                    attr_int("num_scan_inputs", 1),
+                ],
+            )],
             vec![
                 f32_init("init", &[1, 2], &[0.0, 0.0]),
                 f32_init("scan", &[1, 1, 2], &[0.0, 0.0]),

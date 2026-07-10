@@ -15,26 +15,19 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_IsInf_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                bool_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "IsInf",
-                    "test_IsInf",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_int("detect_negative", 1),
-                        attr_int("detect_positive", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![bool_output("Y", &[1, 2])],
+            vec![node(
+                "IsInf",
+                "test_IsInf",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_int("detect_negative", 1),
+                    attr_int("detect_positive", 1),
+                ],
+            )],
+            vec![],
         ),
     )
 }

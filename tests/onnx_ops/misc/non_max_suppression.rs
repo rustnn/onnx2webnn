@@ -19,20 +19,15 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("boxes", &[1, 4, 4]),
                 f32_input("scores", &[1, 1, 4]),
             ],
-            vec![
-                i64_output("selected_indices", &[0, 3]),
-            ],
-            vec![
-                node(
-                    "NonMaxSuppression",
-                    "test",
-                    &["boxes", "scores"],
-                    &["selected_indices"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![i64_output("selected_indices", &[0, 3])],
+            vec![node(
+                "NonMaxSuppression",
+                "test",
+                &["boxes", "scores"],
+                &["selected_indices"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

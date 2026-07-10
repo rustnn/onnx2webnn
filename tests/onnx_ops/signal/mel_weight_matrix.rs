@@ -15,20 +15,21 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_MelWeight_matrix_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[8, 9]),
-            ],
-            vec![
-                node(
-                    "MelWeightMatrix",
-                    "test",
-                    &["num_mel_bins", "dft_length", "sample_rate", "stft_lower_bound", "stft_upper_bound"],
-                    &["output"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![f32_output("output", &[8, 9])],
+            vec![node(
+                "MelWeightMatrix",
+                "test",
+                &[
+                    "num_mel_bins",
+                    "dft_length",
+                    "sample_rate",
+                    "stft_lower_bound",
+                    "stft_upper_bound",
+                ],
+                &["output"],
+                &[],
+            )],
             vec![
                 i64_init("num_mel_bins", &[], &[8]),
                 i64_init("dft_length", &[], &[16]),

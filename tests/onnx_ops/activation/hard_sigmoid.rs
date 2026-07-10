@@ -15,26 +15,19 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_HardSigmoid_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "HardSigmoid",
-                    "test_HardSigmoid",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_float("alpha", 0.20000000298023224),
-                        attr_float("beta", 0.5),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "HardSigmoid",
+                "test_HardSigmoid",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_float("alpha", 0.20000000298023224),
+                    attr_float("beta", 0.5),
+                ],
+            )],
+            vec![],
         ),
     )
 }

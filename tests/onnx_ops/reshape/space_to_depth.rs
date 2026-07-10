@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_SpaceToDepth_graph",
-            vec![
-                f32_input("input", &[1, 4, 4, 4]),
-            ],
-            vec![
-                f32_output("output", &[1, 4, 4, 4]),
-            ],
-            vec![
-                node(
-                    "SpaceToDepth",
-                    "test_SpaceToDepth",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("blocksize", 2),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 4, 4, 4])],
+            vec![f32_output("output", &[1, 4, 4, 4])],
+            vec![node(
+                "SpaceToDepth",
+                "test_SpaceToDepth",
+                &["input"],
+                &["output"],
+                &[attr_int("blocksize", 2)],
+            )],
+            vec![],
         ),
     )
 }

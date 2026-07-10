@@ -15,24 +15,16 @@ fn build_fixture_opset_13() -> ModelProto {
         13,
         graph(
             "test_Reshape_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("reshaped", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Reshape",
-                    "test_Reshape",
-                    &["data", "shape"],
-                    &["reshaped"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("shape", &[2], &[1, 2]),
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("reshaped", &[1, 2])],
+            vec![node(
+                "Reshape",
+                "test_Reshape",
+                &["data", "shape"],
+                &["reshaped"],
+                &[],
+            )],
+            vec![i64_init("shape", &[2], &[1, 2])],
         ),
     )
 }
@@ -49,26 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Reshape_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("reshaped", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Reshape",
-                    "test_Reshape",
-                    &["data", "shape"],
-                    &["reshaped"],
-                    &[
-                        attr_int("allowzero", 0),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("shape", &[2], &[1, 2]),
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("reshaped", &[1, 2])],
+            vec![node(
+                "Reshape",
+                "test_Reshape",
+                &["data", "shape"],
+                &["reshaped"],
+                &[attr_int("allowzero", 0)],
+            )],
+            vec![i64_init("shape", &[2], &[1, 2])],
         ),
     )
 }

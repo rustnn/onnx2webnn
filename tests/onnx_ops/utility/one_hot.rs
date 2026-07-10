@@ -15,22 +15,15 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_OneHot_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[2, 3]),
-            ],
-            vec![
-                node(
-                    "OneHot",
-                    "test",
-                    &["indices", "depth", "values"],
-                    &["output"],
-                    &[
-                        attr_int("axis", -1),
-                    ],
-                ),
-            ],
+            vec![],
+            vec![f32_output("output", &[2, 3])],
+            vec![node(
+                "OneHot",
+                "test",
+                &["indices", "depth", "values"],
+                &["output"],
+                &[attr_int("axis", -1)],
+            )],
             vec![
                 i64_init("indices", &[2], &[0, 1]),
                 i64_init("depth", &[], &[3]),

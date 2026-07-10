@@ -15,22 +15,24 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Col2Im_graph",
+            vec![],
+            vec![f32_output("output", &[1, 1, 5, 5])],
+            vec![node(
+                "Col2Im",
+                "test_Col2Im",
+                &["input", "image_shape", "block_shape"],
+                &["output"],
+                &[],
+            )],
             vec![
-            ],
-            vec![
-                f32_output("output", &[1, 1, 5, 5]),
-            ],
-            vec![
-                node(
-                    "Col2Im",
-                    "test_Col2Im",
-                    &["input", "image_shape", "block_shape"],
-                    &["output"],
-                    &[],
+                f32_init(
+                    "input",
+                    &[1, 5, 5],
+                    &[
+                        1.0, 6.0, 11.0, 16.0, 21.0, 2.0, 7.0, 12.0, 17.0, 22.0, 3.0, 8.0, 13.0,
+                        18.0, 23.0, 4.0, 9.0, 14.0, 19.0, 24.0, 5.0, 0.0, 15.0, 20.0, 25.0,
+                    ],
                 ),
-            ],
-            vec![
-                f32_init("input", &[1, 5, 5], &[1.0, 6.0, 11.0, 16.0, 21.0, 2.0, 7.0, 12.0, 17.0, 22.0, 3.0, 8.0, 13.0, 18.0, 23.0, 4.0, 9.0, 14.0, 19.0, 24.0, 5.0, 0.0, 15.0, 20.0, 25.0]),
                 i64_init("image_shape", &[2], &[5, 5]),
                 i64_init("block_shape", &[2], &[1, 5]),
             ],

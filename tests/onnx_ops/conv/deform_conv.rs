@@ -20,23 +20,15 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("W", &[1, 1, 3, 3]),
                 f32_input("offset", &[1, 18, 2, 2]),
             ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "DeformConv",
-                    "test_DeformConv",
-                    &["X", "W", "offset"],
-                    &["Y"],
-                    &[
-                        attr_int("group", 1),
-                        attr_int("offset_group", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "DeformConv",
+                "test_DeformConv",
+                &["X", "W", "offset"],
+                &["Y"],
+                &[attr_int("group", 1), attr_int("offset_group", 1)],
+            )],
+            vec![],
         ),
     )
 }

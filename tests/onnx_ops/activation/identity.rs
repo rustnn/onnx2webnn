@@ -15,23 +15,16 @@ fn build_fixture_opset_13() -> ModelProto {
         13,
         graph(
             "test_Identity_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Identity",
-                    "test_Identity",
-                    &["input"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Identity",
+                "test_Identity",
+                &["input"],
+                &["output"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }
@@ -48,23 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Identity_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Identity",
-                    "test_Identity",
-                    &["input"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Identity",
+                "test_Identity",
+                &["input"],
+                &["output"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

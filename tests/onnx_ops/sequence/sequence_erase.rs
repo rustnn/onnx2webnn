@@ -15,19 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_SequenceErase_graph",
+            vec![],
+            vec![sequence_f32_output("output_sequence", &[1, 2])],
             vec![
-            ],
-            vec![
-                sequence_f32_output("output_sequence", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "SequenceConstruct",
-                    "mk",
-                    &["t0"],
-                    &["seq"],
-                    &[],
-                ),
+                node("SequenceConstruct", "mk", &["t0"], &["seq"], &[]),
                 node(
                     "SequenceErase",
                     "test",

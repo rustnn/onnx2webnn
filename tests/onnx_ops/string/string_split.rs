@@ -15,24 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_StringSplit_graph",
-            vec![
-            ],
-            vec![
-                string_output("Y", &[2, 2]),
-                i64_output("Z", &[2, 2]),
-            ],
-            vec![
-                node(
-                    "StringSplit",
-                    "test",
-                    &["X"],
-                    &["Y", "Z"],
-                    &[],
-                ),
-            ],
-            vec![
-                string_init("X", &[2], &["a,b", "c,d"]),
-            ],
+            vec![],
+            vec![string_output("Y", &[2, 2]), i64_output("Z", &[2, 2])],
+            vec![node("StringSplit", "test", &["X"], &["Y", "Z"], &[])],
+            vec![string_init("X", &[2], &["a,b", "c,d"])],
         ),
     )
 }

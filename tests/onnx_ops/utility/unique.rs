@@ -15,28 +15,21 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Unique_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
+            vec![f32_input("X", &[1, 2])],
             vec![
                 f32_output("Y", &[1, 2]),
                 i64_output("indices", &[1, 2]),
                 i64_output("inverse_indices", &[1, 2]),
                 i64_output("counts", &[1, 2]),
             ],
-            vec![
-                node(
-                    "Unique",
-                    "test_Unique",
-                    &["X"],
-                    &["Y", "indices", "inverse_indices", "counts"],
-                    &[
-                        attr_int("sorted", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![node(
+                "Unique",
+                "test_Unique",
+                &["X"],
+                &["Y", "indices", "inverse_indices", "counts"],
+                &[attr_int("sorted", 1)],
+            )],
+            vec![],
         ),
     )
 }

@@ -15,25 +15,20 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_DynamicQuantizeLinear_graph",
-            vec![
-                f32_input("x", &[1, 2]),
-            ],
+            vec![f32_input("x", &[1, 2])],
             vec![
                 u8_output("y", &[1, 2]),
                 f32_output("y_scale", &[]),
                 u8_output("y_zero_point", &[]),
             ],
-            vec![
-                node(
-                    "DynamicQuantizeLinear",
-                    "test",
-                    &["x"],
-                    &["y", "y_scale", "y_zero_point"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![node(
+                "DynamicQuantizeLinear",
+                "test",
+                &["x"],
+                &["y", "y_scale", "y_zero_point"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

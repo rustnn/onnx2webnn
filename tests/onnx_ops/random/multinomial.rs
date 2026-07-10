@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Multinomial_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                i32_output("output", &[2]),
-            ],
-            vec![
-                node(
-                    "Multinomial",
-                    "test",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("dtype", 6),
-                        attr_int("sample_size", 2),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![i32_output("output", &[2])],
+            vec![node(
+                "Multinomial",
+                "test",
+                &["input"],
+                &["output"],
+                &[attr_int("dtype", 6), attr_int("sample_size", 2)],
+            )],
+            vec![],
         ),
     )
 }

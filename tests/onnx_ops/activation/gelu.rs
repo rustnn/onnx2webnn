@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Gelu_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Gelu",
-                    "test_Gelu",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_string("approximate", "none"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "Gelu",
+                "test_Gelu",
+                &["X"],
+                &["Y"],
+                &[attr_string("approximate", "none")],
+            )],
+            vec![],
         ),
     )
 }

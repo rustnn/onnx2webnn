@@ -15,23 +15,16 @@ fn build_fixture_opset_12() -> ModelProto {
         12,
         graph(
             "test_Squeeze_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("squeezed", &[2]),
-            ],
-            vec![
-                node(
-                    "Squeeze",
-                    "test_Squeeze",
-                    &["data"],
-                    &["squeezed"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("squeezed", &[2])],
+            vec![node(
+                "Squeeze",
+                "test_Squeeze",
+                &["data"],
+                &["squeezed"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }
@@ -48,23 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Squeeze_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("squeezed", &[2]),
-            ],
-            vec![
-                node(
-                    "Squeeze",
-                    "test_Squeeze",
-                    &["data"],
-                    &["squeezed"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("squeezed", &[2])],
+            vec![node(
+                "Squeeze",
+                "test_Squeeze",
+                &["data"],
+                &["squeezed"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

@@ -15,27 +15,19 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_MaxRoiPool_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-                f32_input("rois", &[2, 4]),
-            ],
-            vec![
-                f32_output("Y", &[2, 1, 2, 2]),
-            ],
-            vec![
-                node(
-                    "MaxRoiPool",
-                    "test",
-                    &["X", "rois"],
-                    &["Y"],
-                    &[
-                        attr_ints("pooled_shape", &[2, 2]),
-                        attr_float("spatial_scale", 1.0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4]), f32_input("rois", &[2, 4])],
+            vec![f32_output("Y", &[2, 1, 2, 2])],
+            vec![node(
+                "MaxRoiPool",
+                "test",
+                &["X", "rois"],
+                &["Y"],
+                &[
+                    attr_ints("pooled_shape", &[2, 2]),
+                    attr_float("spatial_scale", 1.0),
+                ],
+            )],
+            vec![],
         ),
     )
 }

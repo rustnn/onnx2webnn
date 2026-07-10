@@ -15,31 +15,24 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_TfIdfVectorizer_graph",
-            vec![
-            ],
-            vec![
-                f32_output("Y", &[2, 3]),
-            ],
-            vec![
-                node(
-                    "TfIdfVectorizer",
-                    "test",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_int("max_gram_length", 1),
-                        attr_int("max_skip_count", 0),
-                        attr_int("min_gram_length", 1),
-                        attr_string("mode", "TFIDF"),
-                        attr_ints("ngram_counts", &[1, 1, 1]),
-                        attr_ints("ngram_indexes", &[0, 1, 2]),
-                        attr_ints("pool_int64s", &[0, 1, 2]),
-                    ],
-                ),
-            ],
-            vec![
-                string_init("X", &[2], &["a b", "b c"]),
-            ],
+            vec![],
+            vec![f32_output("Y", &[2, 3])],
+            vec![node(
+                "TfIdfVectorizer",
+                "test",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_int("max_gram_length", 1),
+                    attr_int("max_skip_count", 0),
+                    attr_int("min_gram_length", 1),
+                    attr_string("mode", "TFIDF"),
+                    attr_ints("ngram_counts", &[1, 1, 1]),
+                    attr_ints("ngram_indexes", &[0, 1, 2]),
+                    attr_ints("pool_int64s", &[0, 1, 2]),
+                ],
+            )],
+            vec![string_init("X", &[2], &["a b", "b c"])],
         ),
     )
 }

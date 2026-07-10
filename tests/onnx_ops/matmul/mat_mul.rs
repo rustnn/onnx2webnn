@@ -15,24 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_MatMul_graph",
-            vec![
-                f32_input("A", &[1, 2]),
-                f32_input("B", &[2, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "MatMul",
-                    "test_MatMul",
-                    &["A", "B"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("A", &[1, 2]), f32_input("B", &[2, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node("MatMul", "test_MatMul", &["A", "B"], &["Y"], &[])],
+            vec![],
         ),
     )
 }

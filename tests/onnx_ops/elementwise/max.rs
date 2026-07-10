@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Max_graph",
-            vec![
-                f32_input("in0", &[1, 2]),
-            ],
-            vec![
-                f32_output("max", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Max",
-                    "test_Max",
-                    &["in0"],
-                    &["max"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("in0", &[1, 2])],
+            vec![f32_output("max", &[1, 2])],
+            vec![node("Max", "test_Max", &["in0"], &["max"], &[])],
+            vec![],
         ),
     )
 }

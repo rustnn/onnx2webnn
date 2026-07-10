@@ -15,23 +15,16 @@ fn build_fixture_opset_17() -> ModelProto {
         17,
         graph(
             "test_OptionalHasElement_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                bool_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "OptionalHasElement",
-                    "test_OptionalHasElement",
-                    &["input"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![bool_output("output", &[1, 2])],
+            vec![node(
+                "OptionalHasElement",
+                "test_OptionalHasElement",
+                &["input"],
+                &["output"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }
@@ -48,22 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_OptionalHasElement_graph",
-            vec![
-            ],
-            vec![
-                bool_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "OptionalHasElement",
-                    "test_OptionalHasElement",
-                    &[],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![],
+            vec![bool_output("output", &[1, 2])],
+            vec![node(
+                "OptionalHasElement",
+                "test_OptionalHasElement",
+                &[],
+                &["output"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

@@ -15,28 +15,16 @@ fn build_fixture_opset_15() -> ModelProto {
         15,
         graph(
             "test_RoiAlign_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-                f32_input("rois", &[2, 4]),
-            ],
-            vec![
-                f32_output("Y", &[2, 1, 2, 2]),
-            ],
-            vec![
-                node(
-                    "RoiAlign",
-                    "test",
-                    &["X", "rois", "batch_indices"],
-                    &["Y"],
-                    &[
-                        attr_int("output_height", 2),
-                        attr_int("output_width", 2),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("batch_indices", &[2], &[0, 0]),
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4]), f32_input("rois", &[2, 4])],
+            vec![f32_output("Y", &[2, 1, 2, 2])],
+            vec![node(
+                "RoiAlign",
+                "test",
+                &["X", "rois", "batch_indices"],
+                &["Y"],
+                &[attr_int("output_height", 2), attr_int("output_width", 2)],
+            )],
+            vec![i64_init("batch_indices", &[2], &[0, 0])],
         ),
     )
 }
@@ -53,28 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_RoiAlign_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-                f32_input("rois", &[2, 4]),
-            ],
-            vec![
-                f32_output("Y", &[2, 1, 2, 2]),
-            ],
-            vec![
-                node(
-                    "RoiAlign",
-                    "test",
-                    &["X", "rois", "batch_indices"],
-                    &["Y"],
-                    &[
-                        attr_int("output_height", 2),
-                        attr_int("output_width", 2),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("batch_indices", &[2], &[0, 0]),
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4]), f32_input("rois", &[2, 4])],
+            vec![f32_output("Y", &[2, 1, 2, 2])],
+            vec![node(
+                "RoiAlign",
+                "test",
+                &["X", "rois", "batch_indices"],
+                &["Y"],
+                &[attr_int("output_height", 2), attr_int("output_width", 2)],
+            )],
+            vec![i64_init("batch_indices", &[2], &[0, 0])],
         ),
     )
 }

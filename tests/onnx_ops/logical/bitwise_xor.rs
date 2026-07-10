@@ -15,20 +15,15 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_BitwiseXor_graph",
-            vec![
-            ],
-            vec![
-                i32_output("C", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "BitwiseXor",
-                    "test_BitwiseXor",
-                    &["A", "B"],
-                    &["C"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![i32_output("C", &[1, 2])],
+            vec![node(
+                "BitwiseXor",
+                "test_BitwiseXor",
+                &["A", "B"],
+                &["C"],
+                &[],
+            )],
             vec![
                 i32_init("A", &[1, 2], &[1, 0]),
                 i32_init("B", &[1, 2], &[0, 1]),

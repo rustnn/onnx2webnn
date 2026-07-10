@@ -20,25 +20,20 @@ fn build_fixture_opset_10() -> ModelProto {
                 f32_input("B", &[2, 2]),
                 f32_input("C", &[1, 2]),
             ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Gemm",
-                    "test_Gemm",
-                    &["A", "B", "C"],
-                    &["Y"],
-                    &[
-                        attr_int("transA", 0),
-                        attr_int("transB", 0),
-                        attr_float("alpha", 1.0),
-                        attr_float("beta", 1.0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "Gemm",
+                "test_Gemm",
+                &["A", "B", "C"],
+                &["Y"],
+                &[
+                    attr_int("transA", 0),
+                    attr_int("transB", 0),
+                    attr_float("alpha", 1.0),
+                    attr_float("beta", 1.0),
+                ],
+            )],
+            vec![],
         ),
     )
 }
@@ -55,29 +50,21 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Gemm_graph",
-            vec![
-                f32_input("A", &[1, 2]),
-                f32_input("B", &[2, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Gemm",
-                    "test_Gemm",
-                    &["A", "B"],
-                    &["Y"],
-                    &[
-                        attr_int("transA", 0),
-                        attr_int("transB", 0),
-                        attr_float("alpha", 1.0),
-                        attr_float("beta", 1.0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("A", &[1, 2]), f32_input("B", &[2, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "Gemm",
+                "test_Gemm",
+                &["A", "B"],
+                &["Y"],
+                &[
+                    attr_int("transA", 0),
+                    attr_int("transB", 0),
+                    attr_float("alpha", 1.0),
+                    attr_float("beta", 1.0),
+                ],
+            )],
+            vec![],
         ),
     )
 }

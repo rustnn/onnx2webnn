@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_SplitToSequence_graph",
-            vec![
-                f32_input("input", &[2, 2]),
-            ],
-            vec![
-                sequence_f32_output("output_sequence", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "SplitToSequence",
-                    "test",
-                    &["input"],
-                    &["output_sequence"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[2, 2])],
+            vec![sequence_f32_output("output_sequence", &[1, 2])],
+            vec![node(
+                "SplitToSequence",
+                "test",
+                &["input"],
+                &["output_sequence"],
+                &[attr_int("axis", 0)],
+            )],
+            vec![],
         ),
     )
 }

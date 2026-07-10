@@ -19,20 +19,15 @@ fn build_fixture_opset_18() -> ModelProto {
                 f32_input("input", &[1, 2]),
                 f32_input("target_type", &[1, 2]),
             ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "CastLike",
-                    "test_CastLike",
-                    &["input", "target_type"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "CastLike",
+                "test_CastLike",
+                &["input", "target_type"],
+                &["output"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }
@@ -53,22 +48,15 @@ fn build_fixture_opset_23() -> ModelProto {
                 f32_input("input", &[1, 2]),
                 f32_input("target_type", &[1, 2]),
             ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "CastLike",
-                    "test_CastLike",
-                    &["input", "target_type"],
-                    &["output"],
-                    &[
-                        attr_int("saturate", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "CastLike",
+                "test_CastLike",
+                &["input", "target_type"],
+                &["output"],
+                &[attr_int("saturate", 1)],
+            )],
+            vec![],
         ),
     )
 }
@@ -89,23 +77,15 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("input", &[1, 2]),
                 f32_input("target_type", &[1, 2]),
             ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "CastLike",
-                    "test_CastLike",
-                    &["input", "target_type"],
-                    &["output"],
-                    &[
-                        attr_int("saturate", 1),
-                        attr_string("round_mode", "up"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "CastLike",
+                "test_CastLike",
+                &["input", "target_type"],
+                &["output"],
+                &[attr_int("saturate", 1), attr_string("round_mode", "up")],
+            )],
+            vec![],
         ),
     )
 }

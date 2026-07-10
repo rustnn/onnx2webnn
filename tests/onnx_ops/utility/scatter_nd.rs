@@ -15,25 +15,16 @@ fn build_fixture_opset_15() -> ModelProto {
         15,
         graph(
             "test_ScatterND_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-                f32_input("updates", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "ScatterND",
-                    "test_ScatterND",
-                    &["data", "indices", "updates"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[1, 1], &[0]),
-            ],
+            vec![f32_input("data", &[1, 2]), f32_input("updates", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "ScatterND",
+                "test_ScatterND",
+                &["data", "indices", "updates"],
+                &["output"],
+                &[],
+            )],
+            vec![i64_init("indices", &[1, 1], &[0])],
         ),
     )
 }
@@ -50,27 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ScatterND_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-                f32_input("updates", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "ScatterND",
-                    "test_ScatterND",
-                    &["data", "indices", "updates"],
-                    &["output"],
-                    &[
-                        attr_string("reduction", "none"),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[1, 1], &[0]),
-            ],
+            vec![f32_input("data", &[1, 2]), f32_input("updates", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "ScatterND",
+                "test_ScatterND",
+                &["data", "indices", "updates"],
+                &["output"],
+                &[attr_string("reduction", "none")],
+            )],
+            vec![i64_init("indices", &[1, 1], &[0])],
         ),
     )
 }

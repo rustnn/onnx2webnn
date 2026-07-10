@@ -15,20 +15,15 @@ fn build_fixture_opset_12() -> ModelProto {
         12,
         graph(
             "test_DequantizeLinear_graph",
-            vec![
-            ],
-            vec![
-                f32_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "DequantizeLinear",
-                    "test",
-                    &["x", "x_scale", "x_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![f32_output("y", &[1, 2])],
+            vec![node(
+                "DequantizeLinear",
+                "test",
+                &["x", "x_scale", "x_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 u8_init("x", &[2], &[1, 2]),
                 f32_init("x_scale", &[], &[0.5]),
@@ -50,20 +45,15 @@ fn build_fixture_opset_18() -> ModelProto {
         18,
         graph(
             "test_DequantizeLinear_graph",
-            vec![
-            ],
-            vec![
-                f32_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "DequantizeLinear",
-                    "test",
-                    &["x", "x_scale", "x_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![f32_output("y", &[1, 2])],
+            vec![node(
+                "DequantizeLinear",
+                "test",
+                &["x", "x_scale", "x_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 u8_init("x", &[2], &[1, 2]),
                 f32_init("x_scale", &[], &[0.5]),
@@ -85,20 +75,15 @@ fn build_fixture_opset_20() -> ModelProto {
         20,
         graph(
             "test_DequantizeLinear_graph",
-            vec![
-            ],
-            vec![
-                f32_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "DequantizeLinear",
-                    "test",
-                    &["x", "x_scale", "x_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![f32_output("y", &[1, 2])],
+            vec![node(
+                "DequantizeLinear",
+                "test",
+                &["x", "x_scale", "x_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 u8_init("x", &[2], &[1, 2]),
                 f32_init("x_scale", &[], &[0.5]),
@@ -120,20 +105,15 @@ fn build_fixture_opset_22() -> ModelProto {
         22,
         graph(
             "test_DequantizeLinear_graph",
-            vec![
-            ],
-            vec![
-                f32_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "DequantizeLinear",
-                    "test",
-                    &["x", "x_scale", "x_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![f32_output("y", &[1, 2])],
+            vec![node(
+                "DequantizeLinear",
+                "test",
+                &["x", "x_scale", "x_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 u8_init("x", &[2], &[1, 2]),
                 f32_init("x_scale", &[], &[0.5]),
@@ -155,20 +135,15 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_DequantizeLinear_graph",
-            vec![
-            ],
-            vec![
-                f32_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "DequantizeLinear",
-                    "test",
-                    &["x", "x_scale", "x_zero_point"],
-                    &["y"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![f32_output("y", &[1, 2])],
+            vec![node(
+                "DequantizeLinear",
+                "test",
+                &["x", "x_scale", "x_zero_point"],
+                &["y"],
+                &[],
+            )],
             vec![
                 u8_init("x", &[2], &[1, 2]),
                 f32_init("x_scale", &[], &[0.5]),

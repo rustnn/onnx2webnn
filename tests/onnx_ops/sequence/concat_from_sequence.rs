@@ -15,11 +15,8 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ConcatFromSequence_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[2, 2]),
-            ],
+            vec![],
+            vec![f32_output("output", &[2, 2])],
             vec![
                 node(
                     "SequenceConstruct",
@@ -33,9 +30,7 @@ fn build_fixture_opset_26() -> ModelProto {
                     "test",
                     &["input_sequence"],
                     &["output"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
+                    &[attr_int("axis", 0)],
                 ),
             ],
             vec![

@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Not_graph",
-            vec![
-                bool_input("X", &[1, 2]),
-            ],
-            vec![
-                bool_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Not",
-                    "test_Not",
-                    &["X"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![bool_input("X", &[1, 2])],
+            vec![bool_output("Y", &[1, 2])],
+            vec![node("Not", "test_Not", &["X"], &["Y"], &[])],
+            vec![],
         ),
     )
 }

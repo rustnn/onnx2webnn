@@ -68,7 +68,7 @@ impl OpHandler for ConvHandler {
         match op_type {
             "Conv" => self.convert_conv(node, &node_name, context, b, false),
             "ConvTranspose" => self.convert_conv(node, &node_name, context, b, true),
-            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -472,18 +472,8 @@ impl ConvHandler {
         let reshape_w_label = sanitize_identifier(&format!("{node_name}_w4d"));
         let conv_label = sanitize_identifier(&format!("{node_name}_conv2d"));
 
-        let in_4d = i64_slice_to_mldim(&[
-            input_shape[0],
-            input_shape[1],
-            input_shape[2],
-            1,
-        ])?;
-        let w_4d = i64_slice_to_mldim(&[
-            filter_shape[0],
-            filter_shape[1],
-            filter_shape[2],
-            1,
-        ])?;
+        let in_4d = i64_slice_to_mldim(&[input_shape[0], input_shape[1], input_shape[2], 1])?;
+        let w_4d = i64_slice_to_mldim(&[filter_shape[0], filter_shape[1], filter_shape[2], 1])?;
 
         let input = b.resolve_operand(input_raw)?;
         let filter = b.resolve_operand(filter_raw)?;
@@ -500,11 +490,7 @@ impl ConvHandler {
 
         let w4d = b
             .builder
-            .reshape_with_options(
-                filter,
-                w_4d,
-                OnnxBuilder::labeled_options(&reshape_w_label),
-            )
+            .reshape_with_options(filter, w_4d, OnnxBuilder::labeled_options(&reshape_w_label))
             .map_err(map_op_error)?;
         b.record_operand(&[&reshape_w_label], w4d);
 
@@ -545,11 +531,7 @@ impl ConvHandler {
         let out_3d = i64_slice_to_mldim(&[input_shape[0], filter_shape[0], spatial_out])?;
         let final_out = b
             .builder
-            .reshape_with_options(
-                conv_out,
-                out_3d,
-                OnnxBuilder::labeled_options(output_name),
-            )
+            .reshape_with_options(conv_out, out_3d, OnnxBuilder::labeled_options(output_name))
             .map_err(map_op_error)?;
 
         if let Some(onnx_out) = node.output.first() {

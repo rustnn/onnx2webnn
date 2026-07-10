@@ -15,27 +15,16 @@ fn build_fixture_opset_10() -> ModelProto {
         10,
         graph(
             "test_TopK_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                f32_output("Values", &[1]),
-                i64_output("Indices", &[1]),
-            ],
-            vec![
-                node(
-                    "TopK",
-                    "test",
-                    &["X", "K"],
-                    &["Values", "Indices"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("K", &[], &[1]),
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![f32_output("Values", &[1]), i64_output("Indices", &[1])],
+            vec![node(
+                "TopK",
+                "test",
+                &["X", "K"],
+                &["Values", "Indices"],
+                &[attr_int("axis", 0)],
+            )],
+            vec![i64_init("K", &[], &[1])],
         ),
     )
 }
@@ -52,27 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_TopK_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                f32_output("Values", &[1]),
-                i64_output("Indices", &[1]),
-            ],
-            vec![
-                node(
-                    "TopK",
-                    "test",
-                    &["X", "K"],
-                    &["Values", "Indices"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("K", &[], &[1]),
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![f32_output("Values", &[1]), i64_output("Indices", &[1])],
+            vec![node(
+                "TopK",
+                "test",
+                &["X", "K"],
+                &["Values", "Indices"],
+                &[attr_int("axis", 0)],
+            )],
+            vec![i64_init("K", &[], &[1])],
         ),
     )
 }

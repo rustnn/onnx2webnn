@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Concat_graph",
-            vec![
-                f32_input("in0", &[1, 2]),
-                f32_input("in1", &[1, 2]),
-            ],
-            vec![
-                f32_output("concat_result", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Concat",
-                    "test_Concat",
-                    &["in0", "in1"],
-                    &["concat_result"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("in0", &[1, 2]), f32_input("in1", &[1, 2])],
+            vec![f32_output("concat_result", &[1, 2])],
+            vec![node(
+                "Concat",
+                "test_Concat",
+                &["in0", "in1"],
+                &["concat_result"],
+                &[attr_int("axis", 0)],
+            )],
+            vec![],
         ),
     )
 }

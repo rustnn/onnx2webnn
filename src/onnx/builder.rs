@@ -6,14 +6,15 @@
 
 //! ONNX → [`MLGraphBuilder`] bridge (operand map, naming, rustnn error mapping).
 
-use rustnn::DataType; use rustnn::graph::Dimension;
-use crate::protos::onnx::TensorProto;
 use crate::onnx::convert::{map_onnx_data_type, sanitize_identifier, OnnxError};
+use crate::protos::onnx::TensorProto;
 use rustnn::error::{Error as RustnnError, GraphBuilderError};
+use rustnn::graph::Dimension;
+use rustnn::mlcontext::MLOperandDescriptor;
 use rustnn::mlcontext::{MLGraph, MLGraphBuilder, MLOperand};
 use rustnn::operator_enums::MLOperandDataType;
 use rustnn::operator_options::MLOperatorOptions;
-use rustnn::mlcontext::MLOperandDescriptor;
+use rustnn::DataType;
 use std::collections::{HashMap, HashSet};
 
 pub struct OnnxBuilder<'a, 'ctx, 'bld> {
@@ -89,10 +90,7 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
     ) -> Result<(), OnnxError> {
         let id = Self::webnn_id(name);
         let desc = descriptor_from_parts(data_type, shape)?;
-        let op = self
-            .builder
-            .input(&id, &desc)
-            .map_err(map_rustnn_error)?;
+        let op = self.builder.input(&id, &desc).map_err(map_rustnn_error)?;
         self.input_operands.insert(operand_index(op));
         self.input_names.insert(name.to_string());
         self.input_names.insert(id.clone());
@@ -163,14 +161,8 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
                 bytemuck::try_cast_slice::<_, i64>(bytes)
                     .map_err(|e| OnnxError::InvalidShape(e.to_string()))?,
             ),
-            DataType::Uint8 => self.builder.constant_from_slice(
-                &desc,
-                bytes,
-            ),
-            DataType::Int8 => self.builder.constant_from_slice(
-                &desc,
-                bytes,
-            ),
+            DataType::Uint8 => self.builder.constant_from_slice(&desc, bytes),
+            DataType::Int8 => self.builder.constant_from_slice(&desc, bytes),
             other => {
                 return Err(OnnxError::InvalidShape(format!(
                     "unsupported constant data type for builder: {other:?}"
@@ -206,7 +198,10 @@ pub fn map_op_error(err: GraphBuilderError) -> OnnxError {
     OnnxError::ShapeInference(err.to_string())
 }
 
-pub fn descriptor_static(data_type: DataType, shape: &[u32]) -> Result<MLOperandDescriptor, OnnxError> {
+pub fn descriptor_static(
+    data_type: DataType,
+    shape: &[u32],
+) -> Result<MLOperandDescriptor, OnnxError> {
     let dt = map_ast_data_type(data_type)?;
     Ok(MLOperandDescriptor::new(
         dt,
@@ -294,8 +289,8 @@ pub fn tensor_proto_to_bytes(tensor: &TensorProto) -> Result<Vec<u8>, OnnxError>
 mod tests {
     use crate::onnx::convert::{convert_model, ConvertOptions};
     use crate::protos::onnx::{
-        GraphProto, ModelProto, NodeProto, TensorProto_DataType, ValueInfoProto,
-        tensor_shape_proto, type_proto, TensorShapeProto,
+        tensor_shape_proto, type_proto, GraphProto, ModelProto, NodeProto, TensorProto_DataType,
+        TensorShapeProto, ValueInfoProto,
     };
 
     #[test]
@@ -304,7 +299,9 @@ mod tests {
             value: Some(tensor_shape_proto::dimension::Value::DimValue(2)),
             denotation: String::new(),
         };
-        let shape = TensorShapeProto { dim: vec![dim.clone(), dim] };
+        let shape = TensorShapeProto {
+            dim: vec![dim.clone(), dim],
+        };
         let tensor_type = type_proto::Tensor {
             elem_type: TensorProto_DataType::Float.into(),
             shape: Some(shape.clone()),

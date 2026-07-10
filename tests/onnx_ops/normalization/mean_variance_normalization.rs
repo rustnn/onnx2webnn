@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_MeanVarianceNormalization_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "MeanVarianceNormalization",
-                    "test_MeanVarianceNormalization",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_ints("axes", &[0, 2, 3]),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "MeanVarianceNormalization",
+                "test_MeanVarianceNormalization",
+                &["X"],
+                &["Y"],
+                &[attr_ints("axes", &[0, 2, 3])],
+            )],
+            vec![],
         ),
     )
 }

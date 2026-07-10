@@ -15,24 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_SequenceEmpty_graph",
-            vec![
-            ],
-            vec![
-                sequence_f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "SequenceEmpty",
-                    "test",
-                    &[],
-                    &["output"],
-                    &[
-                        attr_int("dtype", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![],
+            vec![sequence_f32_output("output", &[1, 2])],
+            vec![node(
+                "SequenceEmpty",
+                "test",
+                &[],
+                &["output"],
+                &[attr_int("dtype", 1)],
+            )],
+            vec![],
         ),
     )
 }

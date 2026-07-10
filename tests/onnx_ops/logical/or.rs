@@ -15,24 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Or_graph",
-            vec![
-                bool_input("A", &[1, 2]),
-                bool_input("B", &[1, 2]),
-            ],
-            vec![
-                bool_output("C", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Or",
-                    "test_Or",
-                    &["A", "B"],
-                    &["C"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![bool_input("A", &[1, 2]), bool_input("B", &[1, 2])],
+            vec![bool_output("C", &[1, 2])],
+            vec![node("Or", "test_Or", &["A", "B"], &["C"], &[])],
+            vec![],
         ),
     )
 }

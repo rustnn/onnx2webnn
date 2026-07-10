@@ -15,28 +15,20 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_RMSNormalization_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-                f32_input("scale", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "RMSNormalization",
-                    "test_RMSNormalization",
-                    &["X", "scale"],
-                    &["Y"],
-                    &[
-                        attr_int("axis", -1),
-                        attr_float("epsilon", 9.999999747378752e-06),
-                        attr_int("stash_type", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2]), f32_input("scale", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "RMSNormalization",
+                "test_RMSNormalization",
+                &["X", "scale"],
+                &["Y"],
+                &[
+                    attr_int("axis", -1),
+                    attr_float("epsilon", 9.999999747378752e-06),
+                    attr_int("stash_type", 1),
+                ],
+            )],
+            vec![],
         ),
     )
 }

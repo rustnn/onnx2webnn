@@ -15,27 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ConvTranspose_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-                f32_input("W", &[1, 1, 3, 3]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "ConvTranspose",
-                    "test_ConvTranspose",
-                    &["X", "W"],
-                    &["Y"],
-                    &[
-                        attr_int("group", 1),
-                        attr_string("auto_pad", "NOTSET"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4]), f32_input("W", &[1, 1, 3, 3])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "ConvTranspose",
+                "test_ConvTranspose",
+                &["X", "W"],
+                &["Y"],
+                &[attr_int("group", 1), attr_string("auto_pad", "NOTSET")],
+            )],
+            vec![],
         ),
     )
 }

@@ -15,24 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_PRelu_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-                f32_input("slope", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "PRelu",
-                    "test_PRelu",
-                    &["X", "slope"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2]), f32_input("slope", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node("PRelu", "test_PRelu", &["X", "slope"], &["Y"], &[])],
+            vec![],
         ),
     )
 }

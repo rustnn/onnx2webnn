@@ -15,53 +15,37 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Loop_graph",
-            vec![
-            ],
-            vec![
-                i64_output("v_final", &[]),
-            ],
-            vec![
-                node(
-                    "Loop",
-                    "test_Loop",
-                    &["M", "cond", "v_init"],
-                    &["v_final"],
-                    &[
-                        attr_graph("body", graph(
-                                "body",
-                                vec![
-                                    i64_input("iteration_num", &[]),
-                                    bool_input("cond_in", &[]),
-                                    i64_input("v_in", &[]),
-                                ],
-                                vec![
-                                    bool_output("cond_out", &[]),
-                                    i64_output("v_out", &[]),
-                                ],
-                                vec![
-                                    node(
-                                        "Constant",
-                                        "set_false",
-                                        &[],
-                                        &["cond_out"],
-                                        &[
-                                            attr_tensor("value", bool_init("false", &[], &[false])),
-                                        ],
-                                    ),
-                                    node(
-                                        "Identity",
-                                        "pass",
-                                        &["v_in"],
-                                        &["v_out"],
-                                        &[],
-                                    ),
-                                ],
-                                vec![
-                                ],
-                            )),
-                    ],
-                ),
-            ],
+            vec![],
+            vec![i64_output("v_final", &[])],
+            vec![node(
+                "Loop",
+                "test_Loop",
+                &["M", "cond", "v_init"],
+                &["v_final"],
+                &[attr_graph(
+                    "body",
+                    graph(
+                        "body",
+                        vec![
+                            i64_input("iteration_num", &[]),
+                            bool_input("cond_in", &[]),
+                            i64_input("v_in", &[]),
+                        ],
+                        vec![bool_output("cond_out", &[]), i64_output("v_out", &[])],
+                        vec![
+                            node(
+                                "Constant",
+                                "set_false",
+                                &[],
+                                &["cond_out"],
+                                &[attr_tensor("value", bool_init("false", &[], &[false]))],
+                            ),
+                            node("Identity", "pass", &["v_in"], &["v_out"], &[]),
+                        ],
+                        vec![],
+                    ),
+                )],
+            )],
             vec![
                 i64_init("M", &[], &[1]),
                 bool_init("cond", &[], &[true]),

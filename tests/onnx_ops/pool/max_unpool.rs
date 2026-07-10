@@ -15,27 +15,19 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_MaxUnpool_graph",
-            vec![
-                f32_input("X", &[1, 1, 2, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "MaxUnpool",
-                    "test",
-                    &["X", "I"],
-                    &["Y"],
-                    &[
-                        attr_ints("kernel_shape", &[2, 2]),
-                        attr_ints("strides", &[2, 2]),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("I", &[1, 1, 2, 2], &[0, 1, 4, 5]),
-            ],
+            vec![f32_input("X", &[1, 1, 2, 2])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "MaxUnpool",
+                "test",
+                &["X", "I"],
+                &["Y"],
+                &[
+                    attr_ints("kernel_shape", &[2, 2]),
+                    attr_ints("strides", &[2, 2]),
+                ],
+            )],
+            vec![i64_init("I", &[1, 1, 2, 2], &[0, 1, 4, 5])],
         ),
     )
 }

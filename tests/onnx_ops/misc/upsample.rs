@@ -15,26 +15,16 @@ fn build_fixture_opset_9() -> ModelProto {
         9,
         graph(
             "test_Upsample_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-                f32_input("scales", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Upsample",
-                    "test_Upsample",
-                    &["X", "scales"],
-                    &["Y"],
-                    &[
-                        attr_string("mode", "nearest"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2]), f32_input("scales", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "Upsample",
+                "test_Upsample",
+                &["X", "scales"],
+                &["Y"],
+                &[attr_string("mode", "nearest")],
+            )],
+            vec![],
         ),
     )
 }

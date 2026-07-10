@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ImageDecoder_graph",
-            vec![
-            ],
-            vec![
-                u8_output("rgb", &[1, 1, 1]),
-            ],
-            vec![
-                node(
-                    "ImageDecoder",
-                    "test",
-                    &["encoded_stream"],
-                    &["rgb"],
-                    &[
-                        attr_string("pixel_format", "RGB"),
-                    ],
-                ),
-            ],
-            vec![
-                u8_init("encoded_stream", &[3], &[0, 0, 0]),
-            ],
+            vec![],
+            vec![u8_output("rgb", &[1, 1, 1])],
+            vec![node(
+                "ImageDecoder",
+                "test",
+                &["encoded_stream"],
+                &["rgb"],
+                &[attr_string("pixel_format", "RGB")],
+            )],
+            vec![u8_init("encoded_stream", &[3], &[0, 0, 0])],
         ),
     )
 }

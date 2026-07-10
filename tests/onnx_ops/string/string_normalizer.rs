@@ -15,27 +15,20 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_StringNormalizer_graph",
-            vec![
-            ],
-            vec![
-                string_output("Y", &[2]),
-            ],
-            vec![
-                node(
-                    "StringNormalizer",
-                    "test",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_string("case_change_action", "UPPER"),
-                        attr_int("is_case_sensitive", 0),
-                        attr_string("locale", "en_US"),
-                    ],
-                ),
-            ],
-            vec![
-                string_init("X", &[2], &["Hello", "World"]),
-            ],
+            vec![],
+            vec![string_output("Y", &[2])],
+            vec![node(
+                "StringNormalizer",
+                "test",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_string("case_change_action", "UPPER"),
+                    attr_int("is_case_sensitive", 0),
+                    attr_string("locale", "en_US"),
+                ],
+            )],
+            vec![string_init("X", &[2], &["Hello", "World"])],
         ),
     )
 }

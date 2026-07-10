@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Acosh_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Acosh",
-                    "test_Acosh",
-                    &["input"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node("Acosh", "test_Acosh", &["input"], &["output"], &[])],
+            vec![],
         ),
     )
 }

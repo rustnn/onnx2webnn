@@ -305,8 +305,8 @@ fn register_test_operand(
     context: &ConversionContext,
     name: &str,
 ) -> Result<(), OnnxError> {
-    use rustnn::DataType;
     use crate::onnx::convert::{map_onnx_data_type, sanitize_identifier};
+    use rustnn::DataType;
 
     let sanitized = sanitize_identifier(name);
     if builder.resolve_operand(name).is_ok() {
@@ -348,7 +348,12 @@ fn register_test_operand(
     let shape = context
         .resolve_shape(name)
         .map(|s| i64_shape_to_dims(s))
-        .unwrap_or_else(|| vec![rustnn::graph::Dimension::Static(2), rustnn::graph::Dimension::Static(2)]);
+        .unwrap_or_else(|| {
+            vec![
+                rustnn::graph::Dimension::Static(2),
+                rustnn::graph::Dimension::Static(2),
+            ]
+        });
     let dtype = context
         .value_types
         .get(name)
@@ -367,13 +372,10 @@ pub fn convert_handler_with_context(
     use crate::onnx::builder::{map_rustnn_error, OnnxBuilder};
     use rustnn::mlcontext::{MLContext, MLContextOptions, MLGraphBuilder, MLPowerPreference};
 
-    let mut ml_context = MLContext::create(&MLContextOptions::new(
-        MLPowerPreference::Default,
-        false,
-    ))
-    .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
-    let mut ml_builder =
-        MLGraphBuilder::new(&mut ml_context).map_err(map_rustnn_error)?;
+    let mut ml_context =
+        MLContext::create(&MLContextOptions::new(MLPowerPreference::Default, false))
+            .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
+    let mut ml_builder = MLGraphBuilder::new(&mut ml_context).map_err(map_rustnn_error)?;
     let mut builder = OnnxBuilder::new(&mut ml_builder);
     for input in node.input.iter() {
         if input.is_empty() {

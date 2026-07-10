@@ -15,24 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_CumProd_graph",
-            vec![
-                f32_input("x", &[1, 2]),
-            ],
-            vec![
-                f32_output("y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "CumProd",
-                    "test_CumProd",
-                    &["x", "axis"],
-                    &["y"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("axis", &[], &[0]),
-            ],
+            vec![f32_input("x", &[1, 2])],
+            vec![f32_output("y", &[1, 2])],
+            vec![node("CumProd", "test_CumProd", &["x", "axis"], &["y"], &[])],
+            vec![i64_init("axis", &[], &[0])],
         ),
     )
 }

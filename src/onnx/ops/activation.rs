@@ -111,9 +111,7 @@ impl OpHandler for ActivationHandler {
             "HardSwish" => "hard_swish",
             "Softplus" => "softplus",
             "Softsign" => "softsign",
-            _ => {
-                return Err(OnnxError::unsupported_op(op_type.to_string(), node_name,))
-            }
+            _ => return Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         };
 
         self.convert_unary(node, &node_name, webnn_op, context, b)
@@ -184,10 +182,7 @@ impl ActivationHandler {
                 let alpha = attr_f64(node, "alpha").unwrap_or(0.2);
                 let beta = attr_f64(node, "beta").unwrap_or(0.5);
                 b.builder
-                    .hard_sigmoid_with_options(
-                        input0,
-                        MLHardSigmoidOptions { label, alpha, beta },
-                    )
+                    .hard_sigmoid_with_options(input0, MLHardSigmoidOptions { label, alpha, beta })
                     .map_err(map_op_error)?
             }
             _ => {
@@ -305,11 +300,7 @@ fn attr_f64(node: &NodeProto, name: &str) -> Option<f64> {
 }
 
 /// Read a scalar Clip bound from a constant initializer. Rejects non-constant bound inputs.
-fn clip_bound(
-    context: &ConversionContext,
-    name: &str,
-    which: &str,
-) -> Result<f64, OnnxError> {
+fn clip_bound(context: &ConversionContext, name: &str, which: &str) -> Result<f64, OnnxError> {
     let sanitized = sanitize_identifier(name);
     let tensor = context
         .initializers
@@ -358,29 +349,74 @@ fn emit_unary(
     node_name: &str,
 ) -> Result<MLOperand, OnnxError> {
     Ok(match webnn_op {
-        "relu" => b.builder.relu_with_options(input, opts).map_err(map_op_error)?,
-        "gelu" => b.builder.gelu_with_options(input, opts).map_err(map_op_error)?,
-        "tanh" => b.builder.tanh_with_options(input, opts).map_err(map_op_error)?,
+        "relu" => b
+            .builder
+            .relu_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "gelu" => b
+            .builder
+            .gelu_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "tanh" => b
+            .builder
+            .tanh_with_options(input, opts)
+            .map_err(map_op_error)?,
         "sigmoid" => b
             .builder
             .sigmoid_with_options(input, opts)
             .map_err(map_op_error)?,
-        "sqrt" => b.builder.sqrt_with_options(input, opts).map_err(map_op_error)?,
-        "exp" => b.builder.exp_with_options(input, opts).map_err(map_op_error)?,
-        "log" => b.builder.log_with_options(input, opts).map_err(map_op_error)?,
-        "abs" => b.builder.abs_with_options(input, opts).map_err(map_op_error)?,
-        "neg" => b.builder.neg_with_options(input, opts).map_err(map_op_error)?,
-        "erf" => b.builder.erf_with_options(input, opts).map_err(map_op_error)?,
-        "cos" => b.builder.cos_with_options(input, opts).map_err(map_op_error)?,
-        "sin" => b.builder.sin_with_options(input, opts).map_err(map_op_error)?,
+        "sqrt" => b
+            .builder
+            .sqrt_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "exp" => b
+            .builder
+            .exp_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "log" => b
+            .builder
+            .log_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "abs" => b
+            .builder
+            .abs_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "neg" => b
+            .builder
+            .neg_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "erf" => b
+            .builder
+            .erf_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "cos" => b
+            .builder
+            .cos_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "sin" => b
+            .builder
+            .sin_with_options(input, opts)
+            .map_err(map_op_error)?,
         "identity" => b
             .builder
             .identity_with_options(input, opts)
             .map_err(map_op_error)?,
-        "floor" => b.builder.floor_with_options(input, opts).map_err(map_op_error)?,
-        "ceil" => b.builder.ceil_with_options(input, opts).map_err(map_op_error)?,
-        "sign" => b.builder.sign_with_options(input, opts).map_err(map_op_error)?,
-        "tan" => b.builder.tan_with_options(input, opts).map_err(map_op_error)?,
+        "floor" => b
+            .builder
+            .floor_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "ceil" => b
+            .builder
+            .ceil_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "sign" => b
+            .builder
+            .sign_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "tan" => b
+            .builder
+            .tan_with_options(input, opts)
+            .map_err(map_op_error)?,
         "reciprocal" => b
             .builder
             .reciprocal_with_options(input, opts)
@@ -402,7 +438,10 @@ fn emit_unary(
             .softsign_with_options(input, opts)
             .map_err(map_op_error)?,
         _ => {
-            return Err(OnnxError::unsupported_op(webnn_op.to_string(), node_name.to_string(),))
+            return Err(OnnxError::unsupported_op(
+                webnn_op.to_string(),
+                node_name.to_string(),
+            ))
         }
     })
 }

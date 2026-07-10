@@ -15,27 +15,16 @@ fn build_fixture_opset_15() -> ModelProto {
         15,
         graph(
             "test_ScatterElements_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-                f32_input("updates", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "ScatterElements",
-                    "test_ScatterElements",
-                    &["data", "indices", "updates"],
-                    &["output"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[1, 2], &[0, 0]),
-            ],
+            vec![f32_input("data", &[1, 2]), f32_input("updates", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "ScatterElements",
+                "test_ScatterElements",
+                &["data", "indices", "updates"],
+                &["output"],
+                &[attr_int("axis", 0)],
+            )],
+            vec![i64_init("indices", &[1, 2], &[0, 0])],
         ),
     )
 }
@@ -52,28 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ScatterElements_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-                f32_input("updates", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "ScatterElements",
-                    "test_ScatterElements",
-                    &["data", "indices", "updates"],
-                    &["output"],
-                    &[
-                        attr_int("axis", 0),
-                        attr_string("reduction", "none"),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[1, 2], &[0, 0]),
-            ],
+            vec![f32_input("data", &[1, 2]), f32_input("updates", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "ScatterElements",
+                "test_ScatterElements",
+                &["data", "indices", "updates"],
+                &["output"],
+                &[attr_int("axis", 0), attr_string("reduction", "none")],
+            )],
+            vec![i64_init("indices", &[1, 2], &[0, 0])],
         ),
     )
 }

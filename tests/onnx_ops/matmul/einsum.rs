@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Einsum_graph",
-            vec![
-                f32_input("a", &[2, 2]),
-                f32_input("b", &[2, 2]),
-            ],
-            vec![
-                f32_output("c", &[2, 2]),
-            ],
-            vec![
-                node(
-                    "Einsum",
-                    "test",
-                    &["a", "b"],
-                    &["c"],
-                    &[
-                        attr_string("equation", "ij,jk->ik"),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("a", &[2, 2]), f32_input("b", &[2, 2])],
+            vec![f32_output("c", &[2, 2])],
+            vec![node(
+                "Einsum",
+                "test",
+                &["a", "b"],
+                &["c"],
+                &[attr_string("equation", "ij,jk->ik")],
+            )],
+            vec![],
         ),
     )
 }

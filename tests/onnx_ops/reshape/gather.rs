@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Gather_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Gather",
-                    "test_Gather",
-                    &["data", "indices"],
-                    &["output"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[1], &[0]),
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Gather",
+                "test_Gather",
+                &["data", "indices"],
+                &["output"],
+                &[attr_int("axis", 0)],
+            )],
+            vec![i64_init("indices", &[1], &[0])],
         ),
     )
 }

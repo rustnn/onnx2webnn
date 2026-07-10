@@ -15,26 +15,19 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Selu_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Selu",
-                    "test_Selu",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_float("alpha", 1.6732631921768188),
-                        attr_float("gamma", 1.0507010221481323),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "Selu",
+                "test_Selu",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_float("alpha", 1.6732631921768188),
+                    attr_float("gamma", 1.0507010221481323),
+                ],
+            )],
+            vec![],
         ),
     )
 }

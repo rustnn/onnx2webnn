@@ -15,20 +15,9 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_StringConcat_graph",
-            vec![
-            ],
-            vec![
-                string_output("Z", &[4]),
-            ],
-            vec![
-                node(
-                    "StringConcat",
-                    "test",
-                    &["X", "Y"],
-                    &["Z"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![string_output("Z", &[4])],
+            vec![node("StringConcat", "test", &["X", "Y"], &["Z"], &[])],
             vec![
                 string_init("X", &[2], &["a", "b"]),
                 string_init("Y", &[2], &["c", "d"]),

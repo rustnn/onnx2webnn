@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_GlobalLpPool_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 1, 1]),
-            ],
-            vec![
-                node(
-                    "GlobalLpPool",
-                    "test",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_int("p", 2),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 1, 1])],
+            vec![node(
+                "GlobalLpPool",
+                "test",
+                &["X"],
+                &["Y"],
+                &[attr_int("p", 2)],
+            )],
+            vec![],
         ),
     )
 }

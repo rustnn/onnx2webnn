@@ -15,24 +15,18 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_RotaryEmbedding_graph",
-            vec![
-                f32_input("x", &[1, 4, 2, 2]),
-            ],
-            vec![
-                f32_output("out", &[1, 4, 2, 2]),
-            ],
-            vec![
-                node(
-                    "RotaryEmbedding",
-                    "test",
-                    &["x", "cos_cache", "sin_cache"],
-                    &["out"],
-                    &[
-                        attr_int("num_heads", 4),
-                        attr_int("rotary_embedding_dim", 2),
-                    ],
-                ),
-            ],
+            vec![f32_input("x", &[1, 4, 2, 2])],
+            vec![f32_output("out", &[1, 4, 2, 2])],
+            vec![node(
+                "RotaryEmbedding",
+                "test",
+                &["x", "cos_cache", "sin_cache"],
+                &["out"],
+                &[
+                    attr_int("num_heads", 4),
+                    attr_int("rotary_embedding_dim", 2),
+                ],
+            )],
             vec![
                 f32_init("cos_cache", &[1, 2, 1], &[1.0, 1.0]),
                 f32_init("sin_cache", &[1, 2, 1], &[0.0, 0.0]),

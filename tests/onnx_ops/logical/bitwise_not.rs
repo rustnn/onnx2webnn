@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_BitwiseNot_graph",
-            vec![
-            ],
-            vec![
-                i32_output("C", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "BitwiseNot",
-                    "test_BitwiseNot",
-                    &["A"],
-                    &["C"],
-                    &[],
-                ),
-            ],
-            vec![
-                i32_init("A", &[1, 2], &[1, 0]),
-            ],
+            vec![],
+            vec![i32_output("C", &[1, 2])],
+            vec![node("BitwiseNot", "test_BitwiseNot", &["A"], &["C"], &[])],
+            vec![i32_init("A", &[1, 2], &[1, 0])],
         ),
     )
 }

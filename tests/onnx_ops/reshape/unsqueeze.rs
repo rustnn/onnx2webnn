@@ -15,25 +15,16 @@ fn build_fixture_opset_12() -> ModelProto {
         12,
         graph(
             "test_Unsqueeze_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("expanded", &[1, 1, 2]),
-            ],
-            vec![
-                node(
-                    "Unsqueeze",
-                    "test_Unsqueeze",
-                    &["data"],
-                    &["expanded"],
-                    &[
-                        attr_ints("axes", &[0]),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("expanded", &[1, 1, 2])],
+            vec![node(
+                "Unsqueeze",
+                "test_Unsqueeze",
+                &["data"],
+                &["expanded"],
+                &[attr_ints("axes", &[0])],
+            )],
+            vec![],
         ),
     )
 }
@@ -50,24 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Unsqueeze_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("expanded", &[1, 1, 2]),
-            ],
-            vec![
-                node(
-                    "Unsqueeze",
-                    "test_Unsqueeze",
-                    &["data", "axes"],
-                    &["expanded"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("axes", &[1], &[0]),
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("expanded", &[1, 1, 2])],
+            vec![node(
+                "Unsqueeze",
+                "test_Unsqueeze",
+                &["data", "axes"],
+                &["expanded"],
+                &[],
+            )],
+            vec![i64_init("axes", &[1], &[0])],
         ),
     )
 }

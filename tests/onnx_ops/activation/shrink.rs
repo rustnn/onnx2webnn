@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Shrink_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Shrink",
-                    "test_Shrink",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_float("lambd", 0.5),
-                        attr_float("bias", 0.0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Shrink",
+                "test_Shrink",
+                &["input"],
+                &["output"],
+                &[attr_float("lambd", 0.5), attr_float("bias", 0.0)],
+            )],
+            vec![],
         ),
     )
 }

@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ConstantOfShape_graph",
-            vec![
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "ConstantOfShape",
-                    "test",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_tensor("value", f32_init("value", &[1], &[1.0])),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("input", &[2], &[1, 2]),
-            ],
+            vec![],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "ConstantOfShape",
+                "test",
+                &["input"],
+                &["output"],
+                &[attr_tensor("value", f32_init("value", &[1], &[1.0]))],
+            )],
+            vec![i64_init("input", &[2], &[1, 2])],
         ),
     )
 }

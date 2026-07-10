@@ -8,15 +8,13 @@
 use std::collections::{HashMap, HashSet};
 
 use onnx2webnn::onnx::builder::OnnxBuilder;
-use onnx2webnn::protos::onnx::{
-    type_proto, ModelProto, TensorProto_DataType, ValueInfoProto,
-};
+use onnx2webnn::protos::onnx::{type_proto, ModelProto, TensorProto_DataType, ValueInfoProto};
 use onnx2webnn::{convert_model_proto, ConvertOptions, OnnxError, ValidatedGraph};
 use prost::Message;
 use rustnn::graph::OperandDescriptor;
 use rustnn::mlcontext::{MLContext, MLTensor, MLTensorDescriptor};
 use rustnn::operator_enums::MLOperandDataType;
-use rustnn::{OnnxInput, TensorData, run_onnx_with_inputs};
+use rustnn::{run_onnx_with_inputs, OnnxInput, TensorData};
 
 /// Expected outcome for operator-level conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,11 +27,7 @@ pub enum ExpectConvertOp {
 ///
 /// Fixtures are built at the opset declared in `model.opset_import`. The converter
 /// itself accepts any `ai.onnx` opset in the supported range (9–26).
-pub fn assert_op_matches_ort(
-    model: ModelProto,
-    expect: ExpectConvertOp,
-    test_opset: i64,
-) {
+pub fn assert_op_matches_ort(model: ModelProto, expect: ExpectConvertOp, test_opset: i64) {
     let declared_opset = model
         .opset_import
         .iter()
@@ -52,7 +46,8 @@ pub fn assert_op_matches_ort(
             Ok(_) => panic!("expected UnsupportedOp, got Ok"),
         },
         ExpectConvertOp::Success => {
-            let mut validated = result.unwrap_or_else(|err| panic!("expected conversion success, got {err}"));
+            let mut validated =
+                result.unwrap_or_else(|err| panic!("expected conversion success, got {err}"));
             let inputs = build_ort_inputs(&model).expect("failed to build ORT inputs");
             let model_bytes = model.encode_to_vec();
             let reference = run_onnx_with_inputs(&model_bytes, None, clone_ort_inputs(&inputs))
@@ -116,9 +111,7 @@ fn deterministic_float_data(name: &str, len: usize) -> Vec<f32> {
 
 fn deterministic_int_data(name: &str, len: usize) -> Vec<i64> {
     let seed = (name.bytes().map(u64::from).sum::<u64>() % 5) as i64;
-    (0..len)
-        .map(|i| (i as i64 + seed) % 7)
-        .collect()
+    (0..len).map(|i| (i as i64 + seed) % 7).collect()
 }
 
 fn deterministic_bool_data(len: usize) -> Vec<u8> {
@@ -128,8 +121,8 @@ fn deterministic_bool_data(len: usize) -> Vec<u8> {
 fn build_ort_inputs(model: &ModelProto) -> Result<Vec<OnnxInput>, String> {
     let mut inputs = Vec::new();
     for vi in feedable_inputs(model) {
-        let (elem_type, shape) = tensor_dims(vi)
-            .ok_or_else(|| format!("unsupported input kind for {}", vi.name))?;
+        let (elem_type, shape) =
+            tensor_dims(vi).ok_or_else(|| format!("unsupported input kind for {}", vi.name))?;
         let count = shape.iter().product::<usize>().max(1);
         let data = match elem_type {
             x if x == TensorProto_DataType::Float as i32 => {
@@ -148,7 +141,12 @@ fn build_ort_inputs(model: &ModelProto) -> Result<Vec<OnnxInput>, String> {
             x if x == TensorProto_DataType::Uint8 as i32 => {
                 TensorData::Uint8((0..count).map(|i| (i % 255) as u8).collect())
             }
-            other => return Err(format!("unsupported ORT input dtype {other} for {}", vi.name)),
+            other => {
+                return Err(format!(
+                    "unsupported ORT input dtype {other} for {}",
+                    vi.name
+                ))
+            }
         };
         inputs.push(OnnxInput {
             name: vi.name.clone(),
@@ -294,22 +292,30 @@ fn read_tensor_as_f64(
     match desc.data_type {
         rustnn::DataType::Float32 => {
             let mut buf = vec![0.0f32; count];
-            context.read_tensor(tensor, &mut buf).map_err(|e| e.to_string())?;
+            context
+                .read_tensor(tensor, &mut buf)
+                .map_err(|e| e.to_string())?;
             Ok(buf.into_iter().map(f64::from).collect())
         }
         rustnn::DataType::Int32 => {
             let mut buf = vec![0i32; count];
-            context.read_tensor(tensor, &mut buf).map_err(|e| e.to_string())?;
+            context
+                .read_tensor(tensor, &mut buf)
+                .map_err(|e| e.to_string())?;
             Ok(buf.into_iter().map(|v| v as f64).collect())
         }
         rustnn::DataType::Int64 => {
             let mut buf = vec![0i64; count];
-            context.read_tensor(tensor, &mut buf).map_err(|e| e.to_string())?;
+            context
+                .read_tensor(tensor, &mut buf)
+                .map_err(|e| e.to_string())?;
             Ok(buf.into_iter().map(|v| v as f64).collect())
         }
         rustnn::DataType::Uint8 => {
             let mut buf = vec![0u8; count];
-            context.read_tensor(tensor, &mut buf).map_err(|e| e.to_string())?;
+            context
+                .read_tensor(tensor, &mut buf)
+                .map_err(|e| e.to_string())?;
             Ok(buf.into_iter().map(f64::from).collect())
         }
         other => Err(format!("unsupported output read dtype {other:?}")),
@@ -340,7 +346,11 @@ fn compare_outputs(
             .float32_data
             .as_ref()
             .map(|data| data.iter().map(|&v| f64::from(v)).collect::<Vec<_>>())
-            .or_else(|| ort.int64_data.as_ref().map(|data| data.iter().map(|&v| v as f64).collect()))
+            .or_else(|| {
+                ort.int64_data
+                    .as_ref()
+                    .map(|data| data.iter().map(|&v| v as f64).collect())
+            })
             .unwrap_or_else(|| ort.data.clone());
         assert_same_values(&out.name, &expected, got);
     }

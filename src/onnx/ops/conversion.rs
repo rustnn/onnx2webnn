@@ -6,7 +6,9 @@
 
 // Type conversion and constant operators: Cast, Constant
 
-use crate::onnx::builder::{map_onnx_tensor_type, map_op_error, tensor_proto_to_bytes, OnnxBuilder};
+use crate::onnx::builder::{
+    map_onnx_tensor_type, map_op_error, tensor_proto_to_bytes, OnnxBuilder,
+};
 use crate::onnx::builder_helpers::{output_label, record_node_output};
 use crate::onnx::convert::OnnxError;
 use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
@@ -35,7 +37,7 @@ impl OpHandler for ConversionHandler {
         match op_type {
             "Cast" => self.convert_cast(node, &node_name, b),
             "Constant" => self.convert_constant(node, &node_name, b),
-            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -107,11 +109,7 @@ impl ConversionHandler {
             })?;
 
         let data_type = crate::onnx::convert::map_onnx_data_type(tensor.data_type)?;
-        let shape: Vec<u32> = tensor
-            .dims
-            .iter()
-            .map(|&d| d.max(0) as u32)
-            .collect();
+        let shape: Vec<u32> = tensor.dims.iter().map(|&d| d.max(0) as u32).collect();
         let bytes = tensor_proto_to_bytes(tensor)?;
         b.register_constant_from_bytes(onnx_out, data_type, &shape, &bytes)?;
         Ok(ConversionResult::default())

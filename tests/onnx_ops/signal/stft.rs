@@ -15,21 +15,15 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_STFT_graph",
-            vec![
-                f32_input("signal", &[8]),
-            ],
-            vec![
-                f32_output("output", &[5, 2, 2]),
-            ],
-            vec![
-                node(
-                    "STFT",
-                    "test",
-                    &["signal", "frame_step", "frame_length"],
-                    &["output"],
-                    &[],
-                ),
-            ],
+            vec![f32_input("signal", &[8])],
+            vec![f32_output("output", &[5, 2, 2])],
+            vec![node(
+                "STFT",
+                "test",
+                &["signal", "frame_step", "frame_length"],
+                &["output"],
+                &[],
+            )],
             vec![
                 i64_init("frame_step", &[], &[4]),
                 i64_init("frame_length", &[], &[4]),

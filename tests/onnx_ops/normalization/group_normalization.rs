@@ -20,24 +20,19 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("scale", &[1, 2]),
                 f32_input("bias", &[1, 2]),
             ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "GroupNormalization",
-                    "test_GroupNormalization",
-                    &["X", "scale", "bias"],
-                    &["Y"],
-                    &[
-                        attr_float("epsilon", 9.999999747378752e-06),
-                        attr_int("num_groups", 1),
-                        attr_int("stash_type", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "GroupNormalization",
+                "test_GroupNormalization",
+                &["X", "scale", "bias"],
+                &["Y"],
+                &[
+                    attr_float("epsilon", 9.999999747378752e-06),
+                    attr_int("num_groups", 1),
+                    attr_int("stash_type", 1),
+                ],
+            )],
+            vec![],
         ),
     )
 }

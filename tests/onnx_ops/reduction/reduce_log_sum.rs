@@ -15,25 +15,16 @@ fn build_fixture_opset_17() -> ModelProto {
         17,
         graph(
             "test_ReduceLogSum_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("reduced", &[2]),
-            ],
-            vec![
-                node(
-                    "ReduceLogSum",
-                    "test_ReduceLogSum",
-                    &["data"],
-                    &["reduced"],
-                    &[
-                        attr_int("keepdims", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("reduced", &[2])],
+            vec![node(
+                "ReduceLogSum",
+                "test_ReduceLogSum",
+                &["data"],
+                &["reduced"],
+                &[attr_int("keepdims", 1)],
+            )],
+            vec![],
         ),
     )
 }
@@ -50,26 +41,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ReduceLogSum_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("reduced", &[2]),
-            ],
-            vec![
-                node(
-                    "ReduceLogSum",
-                    "test_ReduceLogSum",
-                    &["data"],
-                    &["reduced"],
-                    &[
-                        attr_int("keepdims", 1),
-                        attr_int("noop_with_empty_axes", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("reduced", &[2])],
+            vec![node(
+                "ReduceLogSum",
+                "test_ReduceLogSum",
+                &["data"],
+                &["reduced"],
+                &[attr_int("keepdims", 1), attr_int("noop_with_empty_axes", 0)],
+            )],
+            vec![],
         ),
     )
 }

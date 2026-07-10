@@ -20,23 +20,15 @@ fn build_fixture_opset_23() -> ModelProto {
                 f32_input("K", &[1, 2, 4, 8]),
                 f32_input("V", &[1, 2, 4, 8]),
             ],
-            vec![
-                f32_output("Y", &[1, 2, 4, 8]),
-            ],
-            vec![
-                node(
-                    "Attention",
-                    "test_Attention",
-                    &["Q", "K", "V"],
-                    &["Y"],
-                    &[
-                        attr_int("kv_num_heads", 2),
-                        attr_int("q_num_heads", 2),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("Y", &[1, 2, 4, 8])],
+            vec![node(
+                "Attention",
+                "test_Attention",
+                &["Q", "K", "V"],
+                &["Y"],
+                &[attr_int("kv_num_heads", 2), attr_int("q_num_heads", 2)],
+            )],
+            vec![],
         ),
     )
 }
@@ -58,23 +50,15 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("K", &[1, 2, 4, 8]),
                 f32_input("V", &[1, 2, 4, 8]),
             ],
-            vec![
-                f32_output("Y", &[1, 2, 4, 8]),
-            ],
-            vec![
-                node(
-                    "Attention",
-                    "test_Attention",
-                    &["Q", "K", "V"],
-                    &["Y"],
-                    &[
-                        attr_int("kv_num_heads", 2),
-                        attr_int("q_num_heads", 2),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("Y", &[1, 2, 4, 8])],
+            vec![node(
+                "Attention",
+                "test_Attention",
+                &["Q", "K", "V"],
+                &["Y"],
+                &[attr_int("kv_num_heads", 2), attr_int("q_num_heads", 2)],
+            )],
+            vec![],
         ),
     )
 }

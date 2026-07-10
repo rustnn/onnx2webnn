@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Compress_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1]),
-            ],
-            vec![
-                node(
-                    "Compress",
-                    "test",
-                    &["data", "condition"],
-                    &["output"],
-                    &[
-                        attr_int("axis", 0),
-                    ],
-                ),
-            ],
-            vec![
-                bool_init("condition", &[2], &[true, false]),
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1])],
+            vec![node(
+                "Compress",
+                "test",
+                &["data", "condition"],
+                &["output"],
+                &[attr_int("axis", 0)],
+            )],
+            vec![bool_init("condition", &[2], &[true, false])],
         ),
     )
 }

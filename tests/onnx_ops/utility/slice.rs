@@ -15,26 +15,16 @@ fn build_fixture_opset_9() -> ModelProto {
         9,
         graph(
             "test_Slice_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Slice",
-                    "test_Slice",
-                    &["data"],
-                    &["output"],
-                    &[
-                        attr_ints("starts", &[0, 0]),
-                        attr_ints("ends", &[1, 2]),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Slice",
+                "test_Slice",
+                &["data"],
+                &["output"],
+                &[attr_ints("starts", &[0, 0]), attr_ints("ends", &[1, 2])],
+            )],
+            vec![],
         ),
     )
 }
@@ -51,21 +41,15 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Slice_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Slice",
-                    "test_Slice",
-                    &["data", "starts", "ends"],
-                    &["output"],
-                    &[],
-                ),
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Slice",
+                "test_Slice",
+                &["data", "starts", "ends"],
+                &["output"],
+                &[],
+            )],
             vec![
                 i64_init("starts", &[2], &[0, 0]),
                 i64_init("ends", &[2], &[1, 2]),

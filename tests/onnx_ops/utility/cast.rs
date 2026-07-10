@@ -15,25 +15,16 @@ fn build_fixture_opset_18() -> ModelProto {
         18,
         graph(
             "test_Cast_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Cast",
-                    "test_Cast",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("to", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Cast",
+                "test_Cast",
+                &["input"],
+                &["output"],
+                &[attr_int("to", 1)],
+            )],
+            vec![],
         ),
     )
 }
@@ -50,25 +41,16 @@ fn build_fixture_opset_23() -> ModelProto {
         23,
         graph(
             "test_Cast_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Cast",
-                    "test_Cast",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("to", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Cast",
+                "test_Cast",
+                &["input"],
+                &["output"],
+                &[attr_int("to", 1)],
+            )],
+            vec![],
         ),
     )
 }
@@ -85,25 +67,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Cast_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Cast",
-                    "test_Cast",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_int("to", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Cast",
+                "test_Cast",
+                &["input"],
+                &["output"],
+                &[attr_int("to", 1)],
+            )],
+            vec![],
         ),
     )
 }

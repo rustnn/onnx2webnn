@@ -15,20 +15,9 @@ fn build_fixture_opset_20() -> ModelProto {
         20,
         graph(
             "test_MatMulInteger_graph",
-            vec![
-            ],
-            vec![
-                i32_output("Y", &[1, 1]),
-            ],
-            vec![
-                node(
-                    "MatMulInteger",
-                    "test",
-                    &["A", "B"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![i32_output("Y", &[1, 1])],
+            vec![node("MatMulInteger", "test", &["A", "B"], &["Y"], &[])],
             vec![
                 u8_init("A", &[1, 2], &[1, 2]),
                 u8_init("B", &[2, 1], &[3, 4]),
@@ -49,20 +38,9 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_MatMulInteger_graph",
-            vec![
-            ],
-            vec![
-                i32_output("Y", &[1, 1]),
-            ],
-            vec![
-                node(
-                    "MatMulInteger",
-                    "test",
-                    &["A", "B"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
+            vec![],
+            vec![i32_output("Y", &[1, 1])],
+            vec![node("MatMulInteger", "test", &["A", "B"], &["Y"], &[])],
             vec![
                 u8_init("A", &[1, 2], &[1, 2]),
                 u8_init("B", &[2, 1], &[3, 4]),

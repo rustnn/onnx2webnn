@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_TensorScatter_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-                f32_input("updates", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "TensorScatter",
-                    "test",
-                    &["data", "indices", "updates"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("indices", &[], &[0]),
-            ],
+            vec![f32_input("data", &[1, 2]), f32_input("updates", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "TensorScatter",
+                "test",
+                &["data", "indices", "updates"],
+                &["output"],
+                &[],
+            )],
+            vec![i64_init("indices", &[], &[0])],
         ),
     )
 }

@@ -15,24 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_CenterCropPad_graph",
-            vec![
-                f32_input("input", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("output", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "CenterCropPad",
-                    "test",
-                    &["input", "shape"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-                i64_init("shape", &[4], &[1, 1, 4, 4]),
-            ],
+            vec![f32_input("input", &[1, 1, 4, 4])],
+            vec![f32_output("output", &[1, 1, 4, 4])],
+            vec![node(
+                "CenterCropPad",
+                "test",
+                &["input", "shape"],
+                &["output"],
+                &[],
+            )],
+            vec![i64_init("shape", &[4], &[1, 1, 4, 4])],
         ),
     )
 }

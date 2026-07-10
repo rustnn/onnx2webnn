@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_RegexFullMatch_graph",
-            vec![
-            ],
-            vec![
-                bool_output("Y", &[2]),
-            ],
-            vec![
-                node(
-                    "RegexFullMatch",
-                    "test",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_string("pattern", "a.*"),
-                    ],
-                ),
-            ],
-            vec![
-                string_init("X", &[2], &["abc", "def"]),
-            ],
+            vec![],
+            vec![bool_output("Y", &[2])],
+            vec![node(
+                "RegexFullMatch",
+                "test",
+                &["X"],
+                &["Y"],
+                &[attr_string("pattern", "a.*")],
+            )],
+            vec![string_init("X", &[2], &["abc", "def"])],
         ),
     )
 }

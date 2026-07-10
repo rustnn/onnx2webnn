@@ -15,23 +15,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_NonZero_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                i64_output("Y", &[2, 2]),
-            ],
-            vec![
-                node(
-                    "NonZero",
-                    "test_NonZero",
-                    &["X"],
-                    &["Y"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![i64_output("Y", &[2, 2])],
+            vec![node("NonZero", "test_NonZero", &["X"], &["Y"], &[])],
+            vec![],
         ),
     )
 }

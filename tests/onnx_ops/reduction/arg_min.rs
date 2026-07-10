@@ -15,26 +15,16 @@ fn build_fixture_opset_11() -> ModelProto {
         11,
         graph(
             "test_ArgMin_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                i64_output("reduced", &[2]),
-            ],
-            vec![
-                node(
-                    "ArgMin",
-                    "test_ArgMin",
-                    &["data"],
-                    &["reduced"],
-                    &[
-                        attr_int("axis", 0),
-                        attr_int("keepdims", 1),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![i64_output("reduced", &[2])],
+            vec![node(
+                "ArgMin",
+                "test_ArgMin",
+                &["data"],
+                &["reduced"],
+                &[attr_int("axis", 0), attr_int("keepdims", 1)],
+            )],
+            vec![],
         ),
     )
 }
@@ -51,27 +41,20 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_ArgMin_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                i64_output("reduced", &[2]),
-            ],
-            vec![
-                node(
-                    "ArgMin",
-                    "test_ArgMin",
-                    &["data"],
-                    &["reduced"],
-                    &[
-                        attr_int("axis", 0),
-                        attr_int("keepdims", 1),
-                        attr_int("select_last_index", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![i64_output("reduced", &[2])],
+            vec![node(
+                "ArgMin",
+                "test_ArgMin",
+                &["data"],
+                &["reduced"],
+                &[
+                    attr_int("axis", 0),
+                    attr_int("keepdims", 1),
+                    attr_int("select_last_index", 0),
+                ],
+            )],
+            vec![],
         ),
     )
 }

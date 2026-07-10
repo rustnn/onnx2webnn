@@ -15,25 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_LeakyRelu_graph",
-            vec![
-                f32_input("X", &[1, 2]),
-            ],
-            vec![
-                f32_output("Y", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "LeakyRelu",
-                    "test_LeakyRelu",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_float("alpha", 0.009999999776482582),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 2])],
+            vec![f32_output("Y", &[1, 2])],
+            vec![node(
+                "LeakyRelu",
+                "test_LeakyRelu",
+                &["X"],
+                &["Y"],
+                &[attr_float("alpha", 0.009999999776482582)],
+            )],
+            vec![],
         ),
     )
 }

@@ -15,23 +15,10 @@ fn build_fixture_opset_14() -> ModelProto {
         14,
         graph(
             "test_Shape_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                i64_output("shape", &[2]),
-            ],
-            vec![
-                node(
-                    "Shape",
-                    "test_Shape",
-                    &["data"],
-                    &["shape"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![i64_output("shape", &[2])],
+            vec![node("Shape", "test_Shape", &["data"], &["shape"], &[])],
+            vec![],
         ),
     )
 }
@@ -48,25 +35,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Shape_graph",
-            vec![
-                f32_input("data", &[1, 2]),
-            ],
-            vec![
-                i64_output("shape", &[2]),
-            ],
-            vec![
-                node(
-                    "Shape",
-                    "test_Shape",
-                    &["data"],
-                    &["shape"],
-                    &[
-                        attr_int("start", 0),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("data", &[1, 2])],
+            vec![i64_output("shape", &[2])],
+            vec![node(
+                "Shape",
+                "test_Shape",
+                &["data"],
+                &["shape"],
+                &[attr_int("start", 0)],
+            )],
+            vec![],
         ),
     )
 }

@@ -18,7 +18,6 @@
 
 // Utility operators: Shape, Gather, Slice
 
-use rustnn::DataType;
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::builder_helpers::{
     ast_dims_to_mldim, expand_with_shape, i64_starts_as_u32, output_label, record_node_output,
@@ -29,7 +28,10 @@ use crate::onnx::ops::{
     normalize_axis_best_effort, ConversionContext, ConversionResult, OpHandler,
 };
 use crate::protos::onnx::NodeProto;
-use rustnn::operator_options::{MLDimension, MLDynamicDimension, MLGatherOptions, MLTriangularOptions};
+use rustnn::operator_options::{
+    MLDimension, MLDynamicDimension, MLGatherOptions, MLTriangularOptions,
+};
+use rustnn::DataType;
 
 pub struct UtilityHandler;
 
@@ -61,7 +63,7 @@ impl OpHandler for UtilityHandler {
             "ConstantOfShape" => self.convert_constant_of_shape(node, &node_name, context, b),
             "Range" => self.convert_range(node, &node_name, context, b),
             "Trilu" => self.convert_trilu(node, &node_name, context, b),
-            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -602,12 +604,7 @@ impl UtilityHandler {
                 _ => fill_value_i64.to_le_bytes().to_vec(),
             };
             let scalar_name = format!("{}_fill", output_name);
-            b.register_constant_from_bytes(
-                &scalar_name,
-                dtype.clone(),
-                &[1],
-                &scalar_bytes,
-            )?;
+            b.register_constant_from_bytes(&scalar_name, dtype.clone(), &[1], &scalar_bytes)?;
 
             let scalar = b.resolve_operand(&scalar_name)?;
             let out = expand_with_shape(b, scalar, &output_name, ast_dims_to_mldim(dims))?;
@@ -1087,8 +1084,8 @@ impl UtilityHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustnn::DataType;
     use crate::protos::onnx::{AttributeProto, NodeProto, TensorProto, TensorProto_DataType};
+    use rustnn::DataType;
     fn create_test_node(op_type: &str, inputs: Vec<&str>, outputs: Vec<&str>) -> NodeProto {
         NodeProto {
             op_type: op_type.to_string(),
@@ -1316,7 +1313,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("output"), Some(&DataType::Float32));
     }
 
@@ -1339,7 +1337,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("y"), Some(&DataType::Float32));
     }
 
@@ -1364,7 +1363,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("y"), Some(&DataType::Float16));
     }
 }

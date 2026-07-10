@@ -18,16 +18,17 @@
 
 // Main ONNX to WebNN conversion logic
 
-use rustnn::DataType; use rustnn::graph::{Dimension, DynamicDimension};
 use crate::onnx::builder::{map_rustnn_error, tensor_proto_to_bytes, OnnxBuilder};
 use crate::protos::onnx::{
     tensor_shape_proto::dimension::Value as DimensionValue, type_proto::Value as TypeProtoValue,
     ModelProto, TensorProto_DataType,
 };
 use prost::Message;
+use rustnn::graph::{Dimension, DynamicDimension};
 use rustnn::mlcontext::{
     MLContext, MLContextOptions, MLGraph, MLGraphBuilder, MLOperand, MLPowerPreference,
 };
+use rustnn::DataType;
 use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -416,10 +417,9 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                         }
                                     }
                                     DimensionValue::DimParam(dim_param) => {
-                                        if let Some(v) = resolve_dim_override(
-                                            dim_param,
-                                            &effective_overrides,
-                                        ) {
+                                        if let Some(v) =
+                                            resolve_dim_override(dim_param, &effective_overrides)
+                                        {
                                             resolved.push(Dimension::Static(v));
                                         } else if options.experimental_dynamic_inputs {
                                             let max_size = dynamic_max_for_dim(dim_param);
@@ -507,7 +507,12 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 .collect();
 
             let bytes = tensor_proto_to_bytes(initializer)?;
-            b.register_constant_from_bytes(initializer.name.as_str(), data_type.clone(), &shape, &bytes)?;
+            b.register_constant_from_bytes(
+                initializer.name.as_str(),
+                data_type.clone(),
+                &shape,
+                &bytes,
+            )?;
 
             value_name_map.insert(initializer.name.as_str().to_string(), name.clone());
             value_name_map.insert(name.clone(), name.clone());
@@ -574,8 +579,10 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                                         dim_param,
                                                         &inference_overrides,
                                                     )
-                                                    .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
-                                                    as i64,
+                                                    .unwrap_or_else(|| {
+                                                        dynamic_max_for_dim(dim_param)
+                                                    })
+                                                        as i64,
                                                 );
                                             } else if let Some(v) = resolve_dim_for_inference(
                                                 dim_param,
@@ -605,11 +612,16 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                     match dim_value {
                                         DimensionValue::DimValue(v) => {
                                             if *v > 0 {
-                                                dims.push(rustnn::graph::Dimension::Static(*v as u32));
+                                                dims.push(rustnn::graph::Dimension::Static(
+                                                    *v as u32,
+                                                ));
                                             }
                                         }
                                         DimensionValue::DimParam(dim_param) => {
-                                            dims.push(dimension_for_param(dim_param, &inference_overrides));
+                                            dims.push(dimension_for_param(
+                                                dim_param,
+                                                &inference_overrides,
+                                            ));
                                         }
                                     }
                                 }
@@ -675,8 +687,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                     DimensionValue::DimParam(dim_param) => {
                                         if options.experimental_dynamic_inputs {
                                             shape.push(
-                                                resolve_dim_override(dim_param, &inference_overrides)
-                                                    .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
+                                                resolve_dim_override(
+                                                    dim_param,
+                                                    &inference_overrides,
+                                                )
+                                                .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
                                                     as i64,
                                             );
                                         } else if let Some(v) = resolve_dim_for_inference(
@@ -711,7 +726,10 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                         }
                                     }
                                     DimensionValue::DimParam(dim_param) => {
-                                        dims.push(dimension_for_param(dim_param, &inference_overrides));
+                                        dims.push(dimension_for_param(
+                                            dim_param,
+                                            &inference_overrides,
+                                        ));
                                     }
                                 }
                             }
@@ -1005,7 +1023,12 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         }
 
                         let shape_u32: Vec<u32> = shape.iter().map(|d| *d as u32).collect();
-                        b.register_constant_from_bytes(&const_name, dtype.clone(), &shape_u32, &bytes)?;
+                        b.register_constant_from_bytes(
+                            &const_name,
+                            dtype.clone(),
+                            &shape_u32,
+                            &bytes,
+                        )?;
 
                         value_name_map.insert(out.to_string(), const_name.clone());
                         value_name_map.insert(const_name.clone(), const_name.clone());
@@ -1035,21 +1058,18 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
 
             // Track output shapes after conversion to prevent shape inflation
             // Use .insert() to force correct shapes (not .or_insert() which preserves old shapes)
-            if let Some(inferred_shape) =
-                crate::onnx::shape_inference::infer_node_output_shape(
-                    onnx_node,
-                    &value_shapes,
-                    &initializers_map,
-                    &const_values,
-                )
-            {
+            if let Some(inferred_shape) = crate::onnx::shape_inference::infer_node_output_shape(
+                onnx_node,
+                &value_shapes,
+                &initializers_map,
+                &const_values,
+            ) {
                 for output_name in onnx_node.output.as_slice() {
                     // Insert shape for both raw and sanitized names
                     value_shapes.insert(output_name.to_string(), inferred_shape.clone());
                     value_shapes.insert(sanitize_identifier(output_name), inferred_shape.clone());
                 }
             }
-
         }
 
         Ok(())
@@ -1122,11 +1142,8 @@ pub(crate) fn convert_model(
     let converter = OnnxConverter::new(model.clone())?;
     converter.extract_metadata()?;
 
-    let mut context = MLContext::create(&MLContextOptions::new(
-        MLPowerPreference::Default,
-        false,
-    ))
-    .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
+    let mut context = MLContext::create(&MLContextOptions::new(MLPowerPreference::Default, false))
+        .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
 
     let mut ml_builder = MLGraphBuilder::new(&mut context).map_err(map_rustnn_error)?;
     let mut onnx_builder = OnnxBuilder::new(&mut ml_builder);

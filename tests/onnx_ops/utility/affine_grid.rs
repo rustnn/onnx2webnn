@@ -15,26 +15,16 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_AffineGrid_graph",
-            vec![
-                f32_input("theta", &[1, 2, 3]),
-            ],
-            vec![
-                f32_output("output", &[1, 3, 4, 2]),
-            ],
-            vec![
-                node(
-                    "AffineGrid",
-                    "test",
-                    &["theta", "size"],
-                    &["output"],
-                    &[
-                        attr_int("align_corners", 0),
-                    ],
-                ),
-            ],
-            vec![
-                i64_init("size", &[3], &[1, 3, 4]),
-            ],
+            vec![f32_input("theta", &[1, 2, 3])],
+            vec![f32_output("output", &[1, 3, 4, 2])],
+            vec![node(
+                "AffineGrid",
+                "test",
+                &["theta", "size"],
+                &["output"],
+                &[attr_int("align_corners", 0)],
+            )],
+            vec![i64_init("size", &[3], &[1, 3, 4])],
         ),
     )
 }

@@ -20,20 +20,15 @@ fn build_fixture_opset_26() -> ModelProto {
                 f32_input("X", &[1, 2]),
                 f32_input("Y", &[1, 2]),
             ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Where",
-                    "test_Where",
-                    &["condition", "X", "Y"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Where",
+                "test_Where",
+                &["condition", "X", "Y"],
+                &["output"],
+                &[],
+            )],
+            vec![],
         ),
     )
 }

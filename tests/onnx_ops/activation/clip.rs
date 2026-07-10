@@ -15,26 +15,19 @@ fn build_fixture_opset_10() -> ModelProto {
         10,
         graph(
             "test_Clip_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Clip",
-                    "test_Clip",
-                    &["input"],
-                    &["output"],
-                    &[
-                        attr_float("min", -3.4028234663852886e+38),
-                        attr_float("max", 3.4028234663852886e+38),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node(
+                "Clip",
+                "test_Clip",
+                &["input"],
+                &["output"],
+                &[
+                    attr_float("min", -3.4028234663852886e+38),
+                    attr_float("max", 3.4028234663852886e+38),
+                ],
+            )],
+            vec![],
         ),
     )
 }
@@ -51,23 +44,10 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_Clip_graph",
-            vec![
-                f32_input("input", &[1, 2]),
-            ],
-            vec![
-                f32_output("output", &[1, 2]),
-            ],
-            vec![
-                node(
-                    "Clip",
-                    "test_Clip",
-                    &["input"],
-                    &["output"],
-                    &[],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("input", &[1, 2])],
+            vec![f32_output("output", &[1, 2])],
+            vec![node("Clip", "test_Clip", &["input"], &["output"], &[])],
+            vec![],
         ),
     )
 }

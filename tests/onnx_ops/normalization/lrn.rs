@@ -15,28 +15,21 @@ fn build_fixture_opset_26() -> ModelProto {
         26,
         graph(
             "test_LRN_graph",
-            vec![
-                f32_input("X", &[1, 1, 4, 4]),
-            ],
-            vec![
-                f32_output("Y", &[1, 1, 4, 4]),
-            ],
-            vec![
-                node(
-                    "LRN",
-                    "test_LRN",
-                    &["X"],
-                    &["Y"],
-                    &[
-                        attr_float("bias", 1.0),
-                        attr_int("size", 1),
-                        attr_float("alpha", 9.999999747378752e-05),
-                        attr_float("beta", 0.75),
-                    ],
-                ),
-            ],
-            vec![
-            ],
+            vec![f32_input("X", &[1, 1, 4, 4])],
+            vec![f32_output("Y", &[1, 1, 4, 4])],
+            vec![node(
+                "LRN",
+                "test_LRN",
+                &["X"],
+                &["Y"],
+                &[
+                    attr_float("bias", 1.0),
+                    attr_int("size", 1),
+                    attr_float("alpha", 9.999999747378752e-05),
+                    attr_float("beta", 0.75),
+                ],
+            )],
+            vec![],
         ),
     )
 }

@@ -499,9 +499,7 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 
@@ -615,7 +613,7 @@ impl UtilityHandler {
                 _ => fill_value_i64.to_le_bytes().to_vec(),
             };
             let scalar_name = format!("{}_fill", output_name);
-            b.register_constant_from_bytes(&scalar_name, dtype.clone(), &[1], &scalar_bytes)?;
+            b.register_constant_from_bytes(&scalar_name, dtype, &[1], &scalar_bytes)?;
 
             let scalar = b.resolve_operand(&scalar_name)?;
             let out = expand_with_shape(b, scalar, &output_name, ast_dims_to_mldim(dims))?;
@@ -656,7 +654,7 @@ impl UtilityHandler {
 
         b.register_constant_from_bytes(
             &output_name,
-            dtype.clone(),
+            dtype,
             &shape.iter().map(|d| *d as u32).collect::<Vec<_>>(),
             &bytes,
         )?;
@@ -718,9 +716,7 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 
@@ -759,9 +755,7 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 
@@ -813,9 +807,7 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 
@@ -872,9 +864,7 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 
@@ -1236,9 +1226,7 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 

@@ -384,6 +384,7 @@ impl ConvHandler {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_conv_2d(
         &self,
         node: &NodeProto,

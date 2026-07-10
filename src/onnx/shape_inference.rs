@@ -159,7 +159,7 @@ fn seed_initializers(
         let dtype = map_onnx_data_type(init.data_type)
             .map_err(|_| ShapeInferenceError::UnsupportedDataType(init.data_type))?;
         let shape: Vec<i64> = init.dims.as_slice().to_vec();
-        result.value_types.insert(name.clone(), dtype.clone());
+        result.value_types.insert(name.clone(), dtype);
         result.value_shapes.insert(name.clone(), shape);
 
         if matches!(
@@ -267,7 +267,6 @@ fn propagate_node_shapes(
 }
 
 #[allow(dead_code)]
-
 pub fn infer_node_output_shape(
     node: &crate::protos::onnx::NodeProto,
     value_shapes: &HashMap<String, Vec<i64>>,
@@ -2034,14 +2033,14 @@ fn fold_shape_constants(
                     let a = const_values.get(a_name);
                     let b = const_values.get(b_name);
                     if let (Some(a), Some(b)) = (a, b) {
-                        let a_shape = const_shape_for_folding(a_name, a, &value_shapes);
-                        let b_shape = const_shape_for_folding(b_name, b, &value_shapes);
+                        let a_shape = const_shape_for_folding(a_name, a, value_shapes);
+                        let b_shape = const_shape_for_folding(b_name, b, value_shapes);
                         if let Some((result_vals, out_shape)) =
                             fold_binary_const_i64(op_type, a, b, &a_shape, &b_shape)
                         {
                             if options.experimental_dynamic_inputs {
-                                let a_dims = value_shape_dims_for(a_name, &value_shape_dims);
-                                let b_dims = value_shape_dims_for(b_name, &value_shape_dims);
+                                let a_dims = value_shape_dims_for(a_name, value_shape_dims);
+                                let b_dims = value_shape_dims_for(b_name, value_shape_dims);
                                 if let Some(out_dims) = fold_binary_dynamic_dims(
                                     op_type, a, b, &a_shape, &b_shape, a_dims, b_dims,
                                 ) {
@@ -2101,9 +2100,9 @@ fn fold_shape_constants(
                 ) {
                     if options.experimental_dynamic_inputs {
                         let start_dim =
-                            dynamic_scalar_dimension_for_value(start_name, &value_shape_dims);
+                            dynamic_scalar_dimension_for_value(start_name, value_shape_dims);
                         if let Some(limit_dim) =
-                            dynamic_scalar_dimension_for_value(limit_name, &value_shape_dims)
+                            dynamic_scalar_dimension_for_value(limit_name, value_shape_dims)
                         {
                             if let (Some(start_vals), Some(delta_vals), Some(out)) = (
                                 const_values.get(start_name),
@@ -2266,7 +2265,7 @@ fn fold_shape_constants(
             // ConstantOfShape(shape) -> tensor filled with constant value
             if let Some(shape_name) = node.input.as_slice().first() {
                 let dynamic_output_dims = if options.experimental_dynamic_inputs {
-                    value_shape_dims_for(shape_name, &value_shape_dims)
+                    value_shape_dims_for(shape_name, value_shape_dims)
                         .map(|dims| dims.to_vec())
                         .filter(|dims| dims_contain_dynamic(dims))
                 } else {
@@ -2322,8 +2321,8 @@ fn fold_shape_constants(
                     let a = const_values.get(a_name);
                     let b = const_values.get(b_name);
                     if let (Some(a), Some(b)) = (a, b) {
-                        let a_shape = const_shape_for_folding(a_name, a, &value_shapes);
-                        let b_shape = const_shape_for_folding(b_name, b, &value_shapes);
+                        let a_shape = const_shape_for_folding(a_name, a, value_shapes);
+                        let b_shape = const_shape_for_folding(b_name, b, value_shapes);
                         if let Some((result_vals, out_shape)) =
                             fold_binary_const_i64("Equal", a, b, &a_shape, &b_shape)
                         {
@@ -2342,13 +2341,13 @@ fn fold_shape_constants(
                     let cond = const_values.get(node.input.as_slice()[0].as_str());
                     let a_dims = dimension_vector_for_value(
                         node.input.as_slice()[1].as_str(),
-                        &const_values,
-                        &value_shape_dims,
+                        const_values,
+                        value_shape_dims,
                     );
                     let b_dims = dimension_vector_for_value(
                         node.input.as_slice()[2].as_str(),
-                        &const_values,
-                        &value_shape_dims,
+                        const_values,
+                        value_shape_dims,
                     );
                     let out_dims = if let (Some(cond), Some(a_dims), Some(b_dims)) =
                         (cond, a_dims.as_ref(), b_dims.as_ref())
@@ -2512,12 +2511,9 @@ pub fn propagate_shapes_and_fold_constants(
                         continue;
                     }
 
-                    if let Some(inferred) = infer_node_output_shape(
-                        onnx_node,
-                        &value_shapes,
-                        &initializers,
-                        &const_values,
-                    ) {
+                    if let Some(inferred) =
+                        infer_node_output_shape(onnx_node, value_shapes, initializers, const_values)
+                    {
                         if let Some(output_name) = onnx_node.output.as_slice().first() {
                             // Debug: track shape changes for layer 15 operations
                             if output_name.contains("layers_15_self_attn")

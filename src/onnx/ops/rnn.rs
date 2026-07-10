@@ -119,9 +119,7 @@ impl RnnHandler {
             })?;
             let mapped = map_onnx_sequence_output(b, node_name, seq, context, &outputs[0])?;
             record_node_output(b, &outputs[0], &format!("{label}_y"), mapped);
-            result
-                .output_types
-                .insert(outputs[0].clone(), input_dtype.clone());
+            result.output_types.insert(outputs[0].clone(), input_dtype);
         }
 
         if wants_hidden {
@@ -200,17 +198,13 @@ impl RnnHandler {
             })?;
             let mapped = map_onnx_sequence_output(b, node_name, seq, context, &outputs[0])?;
             record_node_output(b, &outputs[0], &format!("{label}_y"), mapped);
-            result
-                .output_types
-                .insert(outputs[0].clone(), input_dtype.clone());
+            result.output_types.insert(outputs[0].clone(), input_dtype);
         }
 
         if wants_hidden {
             let out_name = outputs.get(1).expect("checked above");
             record_node_output(b, out_name, &format!("{label}_y_h"), lstm_outputs[0]);
-            result
-                .output_types
-                .insert(out_name.clone(), input_dtype.clone());
+            result.output_types.insert(out_name.clone(), input_dtype);
         }
 
         if wants_cell {

@@ -117,7 +117,7 @@ impl ConversionHandler {
                 inputs[1]
             ))
         })?;
-        let cast_type = map_ast_data_type(target_type.clone())?;
+        let cast_type = map_ast_data_type(target_type)?;
 
         let output_name = output_label(node, node_name);
         let input = b.resolve_operand(&inputs[0])?;
@@ -154,7 +154,7 @@ impl ConversionHandler {
         let tensor = node
             .attribute
             .iter()
-            .find_map(|attr| (attr.name.as_str() == "value").then(|| attr.t.as_ref()))
+            .find_map(|attr| (attr.name.as_str() == "value").then_some(attr.t.as_ref()))
             .flatten()
             .ok_or_else(|| OnnxError::MissingAttribute {
                 attr: "value".to_string(),

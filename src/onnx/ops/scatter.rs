@@ -116,9 +116,7 @@ impl OpHandler for ScatterHandler {
 
         let mut result = ConversionResult::default();
         if let Some(dtype) = context.value_types.get(&inputs[0]) {
-            result
-                .output_types
-                .insert(outputs[0].clone(), dtype.clone());
+            result.output_types.insert(outputs[0].clone(), *dtype);
         }
         Ok(result)
     }

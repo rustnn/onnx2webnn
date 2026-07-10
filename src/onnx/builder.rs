@@ -110,10 +110,9 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
         }
         let label = format!("{}__graph_out", Self::webnn_id(name));
         let opts = Self::labeled_options(&label);
-        Ok(self
-            .builder
+        self.builder
             .identity_with_options(op, opts)
-            .map_err(map_op_error)?)
+            .map_err(map_op_error)
     }
 
     /// Build-time output key; disambiguate when ONNX reuses an input name as output.
@@ -139,7 +138,7 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
         bytes: &[u8],
     ) -> Result<(), OnnxError> {
         let id = Self::webnn_id(name);
-        let desc = descriptor_static(data_type.clone(), shape)?;
+        let desc = descriptor_static(data_type, shape)?;
         let op = match data_type {
             DataType::Float32 => self.builder.constant_from_slice(
                 &desc,
@@ -178,7 +177,6 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
     pub fn labeled_options(label: &str) -> MLOperatorOptions {
         MLOperatorOptions {
             label: label.to_string(),
-            ..Default::default()
         }
     }
 

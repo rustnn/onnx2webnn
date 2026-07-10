@@ -95,7 +95,7 @@ impl ReshapeHandler {
             let mut result = ConversionResult::default();
             if let Some(inp) = dtype_input {
                 if let Some(dtype) = context.value_types.get(inp) {
-                    result.output_types.insert(onnx_out.clone(), dtype.clone());
+                    result.output_types.insert(onnx_out.clone(), *dtype);
                 }
             }
             Ok(result)
@@ -284,7 +284,7 @@ impl ReshapeHandler {
         if shape_values.is_empty() {
             if let Some(out) = node.output.as_slice().first() {
                 if let Some(output_dims) =
-                    value_shape_dims_for(out.as_str(), &context.value_shape_dims)
+                    value_shape_dims_for(out.as_str(), context.value_shape_dims)
                 {
                     if !output_dims.is_empty() {
                         let new_shape = ast_dims_to_mldim(output_dims);
@@ -302,7 +302,7 @@ impl ReshapeHandler {
             }
 
             if let Some(shape_dims) =
-                value_shape_dims_for(shape_input_raw.as_str(), &context.value_shape_dims)
+                value_shape_dims_for(shape_input_raw.as_str(), context.value_shape_dims)
             {
                 if !shape_dims.is_empty() {
                     let new_shape = ast_dims_to_mldim(shape_dims);
@@ -983,10 +983,7 @@ impl ReshapeHandler {
             )));
         }
 
-        for (onnx_out, (webnn_out, op)) in outputs
-            .iter()
-            .zip(sanitized_outputs.iter().zip(outs.into_iter()))
-        {
+        for (onnx_out, (webnn_out, op)) in outputs.iter().zip(sanitized_outputs.iter().zip(outs)) {
             record_node_output(b, onnx_out, webnn_out, op);
         }
         Ok(ConversionResult::default())

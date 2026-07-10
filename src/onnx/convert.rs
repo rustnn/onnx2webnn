@@ -157,10 +157,8 @@ pub(crate) fn map_onnx_data_type(onnx_type: i32) -> Result<DataType, OnnxError> 
     })
 }
 
-/// Infer output shape for an ONNX node based on its operation type and inputs
-
 /// Conversion options for ONNX → MLGraphBuilder lowering + ORT validation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ConvertOptions {
     /// Override dynamic dimension values (e.g., batch_size=1, sequence_length=128)
     pub free_dim_overrides: HashMap<String, u32>,
@@ -168,16 +166,6 @@ pub struct ConvertOptions {
     pub optimize: bool,
     /// Experimental: preserve unresolved dynamic input dimensions in graph metadata
     pub experimental_dynamic_inputs: bool,
-}
-
-impl Default for ConvertOptions {
-    fn default() -> Self {
-        Self {
-            free_dim_overrides: HashMap::new(),
-            optimize: false,
-            experimental_dynamic_inputs: false,
-        }
-    }
 }
 
 struct TensorInfo {
@@ -470,11 +458,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         continue;
                     }
 
-                    b.register_input(&raw_name, data_type.clone(), &shape)?;
+                    b.register_input(&raw_name, data_type, &shape)?;
 
                     value_name_map.insert(raw_name.clone(), name.clone());
                     value_name_map.insert(name.clone(), name.clone());
-                    value_types.insert(raw_name.clone(), data_type.clone());
+                    value_types.insert(raw_name.clone(), data_type);
                     value_types.insert(name.clone(), data_type);
                 }
             }
@@ -507,16 +495,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 .collect();
 
             let bytes = tensor_proto_to_bytes(initializer)?;
-            b.register_constant_from_bytes(
-                initializer.name.as_str(),
-                data_type.clone(),
-                &shape,
-                &bytes,
-            )?;
+            b.register_constant_from_bytes(initializer.name.as_str(), data_type, &shape, &bytes)?;
 
             value_name_map.insert(initializer.name.as_str().to_string(), name.clone());
             value_name_map.insert(name.clone(), name.clone());
-            value_types.insert(initializer.name.as_str().to_string(), data_type.clone());
+            value_types.insert(initializer.name.as_str().to_string(), data_type);
             value_types.insert(name, data_type);
         }
 
@@ -1023,16 +1006,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         }
 
                         let shape_u32: Vec<u32> = shape.iter().map(|d| *d as u32).collect();
-                        b.register_constant_from_bytes(
-                            &const_name,
-                            dtype.clone(),
-                            &shape_u32,
-                            &bytes,
-                        )?;
+                        b.register_constant_from_bytes(&const_name, dtype, &shape_u32, &bytes)?;
 
                         value_name_map.insert(out.to_string(), const_name.clone());
                         value_name_map.insert(const_name.clone(), const_name.clone());
-                        value_types.insert(out.to_string(), dtype.clone());
+                        value_types.insert(out.to_string(), dtype);
                         value_types.insert(const_name, dtype);
                     }
                 }

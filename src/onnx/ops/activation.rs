@@ -27,6 +27,7 @@ use rustnn::mlcontext::MLOperand;
 use rustnn::operator_options::{
     MLClampOptions, MLEluOptions, MLHardSigmoidOptions, MLLeakyReluOptions,
 };
+use rustnn::DataType;
 
 pub struct ActivationHandler;
 
@@ -63,6 +64,12 @@ impl OpHandler for ActivationHandler {
                 | "HardSigmoid"
                 | "Clip"
                 | "PRelu"
+                // Decomposed activations
+                | "Swish"
+                | "Celu"
+                | "Selu"
+                | "Mish"
+                | "ThresholdedRelu"
         )
     }
 
@@ -85,6 +92,11 @@ impl OpHandler for ActivationHandler {
             "Elu" | "LeakyRelu" | "HardSigmoid" => {
                 return self.convert_parametric(node, &node_name, op_type, b)
             }
+            "Swish" => return self.convert_swish(node, &node_name, b),
+            "Mish" => return self.convert_mish(node, &node_name, b),
+            "Celu" => return self.convert_celu(node, &node_name, b),
+            "Selu" => return self.convert_selu(node, &node_name, b),
+            "ThresholdedRelu" => return self.convert_thresholded_relu(node, &node_name, b),
             _ => {}
         }
 
@@ -268,6 +280,260 @@ impl ActivationHandler {
         record_output(b, node, &output_name, out);
         Ok(ConversionResult::default())
     }
+
+    /// Swish: `x * sigmoid(x)`.
+    fn convert_swish(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Swish expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let sigmoid_label = step_label(&output_name, "sigmoid");
+        let sigmoid = b
+            .builder
+            .sigmoid_with_options(input0, OnnxBuilder::labeled_options(&sigmoid_label))
+            .map_err(map_op_error)?;
+        let out = b
+            .builder
+            .mul_with_options(
+                b.resolve_operand(&inputs[0])?,
+                sigmoid,
+                OnnxBuilder::labeled_options(&output_name),
+            )
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Mish: `x * tanh(softplus(x))`.
+    fn convert_mish(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Mish expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let softplus_label = step_label(&output_name, "softplus");
+        let softplus = b
+            .builder
+            .softplus_with_options(input0, OnnxBuilder::labeled_options(&softplus_label))
+            .map_err(map_op_error)?;
+        let tanh_label = step_label(&output_name, "tanh");
+        let tanh_out = b
+            .builder
+            .tanh_with_options(softplus, OnnxBuilder::labeled_options(&tanh_label))
+            .map_err(map_op_error)?;
+        let out = b
+            .builder
+            .mul_with_options(
+                b.resolve_operand(&inputs[0])?,
+                tanh_out,
+                OnnxBuilder::labeled_options(&output_name),
+            )
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Celu: `alpha * (exp(x/alpha) - 1)` for `x <= 0`, else `x`.
+    fn convert_celu(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Celu expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let alpha = attr_f64(node, "alpha").unwrap_or(1.0);
+        let input0 = b.resolve_operand(&inputs[0])?;
+
+        let alpha_name = step_label(&output_name, "alpha");
+        let alpha_op = register_f32_scalar(b, &alpha_name, alpha as f32)?;
+        let one_name = step_label(&output_name, "one");
+        let one_op = register_f32_scalar(b, &one_name, 1.0)?;
+        let zero_name = step_label(&output_name, "zero");
+        let zero_op = register_f32_scalar(b, &zero_name, 0.0)?;
+
+        let div_label = step_label(&output_name, "div");
+        let x_over_alpha = b
+            .builder
+            .div_with_options(input0, alpha_op, OnnxBuilder::labeled_options(&div_label))
+            .map_err(map_op_error)?;
+        let exp_label = step_label(&output_name, "exp");
+        let exp_out = b
+            .builder
+            .exp_with_options(x_over_alpha, OnnxBuilder::labeled_options(&exp_label))
+            .map_err(map_op_error)?;
+        let exp_minus_one_label = step_label(&output_name, "exp_minus_one");
+        let exp_minus_one = b
+            .builder
+            .sub_with_options(
+                exp_out,
+                one_op,
+                OnnxBuilder::labeled_options(&exp_minus_one_label),
+            )
+            .map_err(map_op_error)?;
+        let celu_neg_label = step_label(&output_name, "celu_neg");
+        let celu_neg = b
+            .builder
+            .mul_with_options(
+                alpha_op,
+                exp_minus_one,
+                OnnxBuilder::labeled_options(&celu_neg_label),
+            )
+            .map_err(map_op_error)?;
+
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let gt_label = step_label(&output_name, "gt");
+        let cond = b
+            .builder
+            .greater_with_options(input0, zero_op, OnnxBuilder::labeled_options(&gt_label))
+            .map_err(map_op_error)?;
+        let out = b
+            .builder
+            .where_with_options(
+                cond,
+                b.resolve_operand(&inputs[0])?,
+                celu_neg,
+                OnnxBuilder::labeled_options(&output_name),
+            )
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Selu: `gamma * elu(x, alpha)` with ONNX default `alpha`/`gamma`.
+    fn convert_selu(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Selu expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let alpha = attr_f64(node, "alpha").unwrap_or(1.6732632423543773);
+        let gamma = attr_f64(node, "gamma").unwrap_or(1.0507010298910828);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let elu_label = step_label(&output_name, "elu");
+        let elu_out = b
+            .builder
+            .elu_with_options(
+                input0,
+                MLEluOptions {
+                    label: elu_label,
+                    alpha,
+                },
+            )
+            .map_err(map_op_error)?;
+        let gamma_name = step_label(&output_name, "gamma");
+        let gamma_op = register_f32_scalar(b, &gamma_name, gamma as f32)?;
+        let out = b
+            .builder
+            .mul_with_options(
+                gamma_op,
+                elu_out,
+                OnnxBuilder::labeled_options(&output_name),
+            )
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// ThresholdedRelu: `x` when `x > alpha`, else `0`.
+    fn convert_thresholded_relu(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "ThresholdedRelu expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let threshold = attr_f64(node, "alpha").unwrap_or(1.0);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let threshold_name = step_label(&output_name, "threshold");
+        let threshold_op = register_f32_scalar(b, &threshold_name, threshold as f32)?;
+        let zero_name = step_label(&output_name, "zero");
+        let zero_op = register_f32_scalar(b, &zero_name, 0.0)?;
+
+        let gt_label = step_label(&output_name, "gt");
+        let cond = b
+            .builder
+            .greater_with_options(
+                input0,
+                threshold_op,
+                OnnxBuilder::labeled_options(&gt_label),
+            )
+            .map_err(map_op_error)?;
+        let out = b
+            .builder
+            .where_with_options(
+                cond,
+                b.resolve_operand(&inputs[0])?,
+                zero_op,
+                OnnxBuilder::labeled_options(&output_name),
+            )
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+}
+
+fn step_label(base: &str, step: &str) -> String {
+    format!("{base}__{step}")
+}
+
+fn register_f32_scalar(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    name: &str,
+    value: f32,
+) -> Result<MLOperand, OnnxError> {
+    b.register_constant_from_bytes(name, DataType::Float32, &[1], &value.to_le_bytes())?;
+    b.resolve_operand(name)
 }
 
 fn output_name_for(node: &NodeProto, node_name: &str) -> String {
@@ -492,6 +758,11 @@ mod tests {
         assert!(handler.supports("HardSigmoid"));
         assert!(handler.supports("Clip"));
         assert!(handler.supports("PRelu"));
+        assert!(handler.supports("Swish"));
+        assert!(handler.supports("Celu"));
+        assert!(handler.supports("Selu"));
+        assert!(handler.supports("Mish"));
+        assert!(handler.supports("ThresholdedRelu"));
         assert!(!handler.supports("Add"));
     }
 

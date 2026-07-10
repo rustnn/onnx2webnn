@@ -7,10 +7,10 @@
 // Type conversion and constant operators: Cast, Constant, QuantizeLinear, DequantizeLinear
 
 use crate::onnx::builder::{
-    map_onnx_tensor_type, map_op_error, tensor_proto_to_bytes, OnnxBuilder,
+    map_ast_data_type, map_onnx_tensor_type, map_op_error, tensor_proto_to_bytes, OnnxBuilder,
 };
 use crate::onnx::builder_helpers::{output_label, record_node_output};
-use crate::onnx::convert::OnnxError;
+use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
 use crate::protos::onnx::NodeProto;
 use rustnn::mlcontext::MLOperand;
@@ -21,7 +21,7 @@ impl OpHandler for ConversionHandler {
     fn supports(&self, op_type: &str) -> bool {
         matches!(
             op_type,
-            "Cast" | "Constant" | "QuantizeLinear" | "DequantizeLinear"
+            "Cast" | "Constant" | "QuantizeLinear" | "DequantizeLinear" | "CastLike"
         )
     }
 
@@ -40,6 +40,7 @@ impl OpHandler for ConversionHandler {
 
         match op_type {
             "Cast" => self.convert_cast(node, &node_name, b),
+            "CastLike" => self.convert_cast_like(node, &node_name, context, b),
             "Constant" => self.convert_constant(node, &node_name, b),
             "QuantizeLinear" => self.convert_quantize_linear(node, &node_name, context, b),
             "DequantizeLinear" => self.convert_dequantize_linear(node, &node_name, context, b),
@@ -91,6 +92,52 @@ impl ConversionHandler {
             b.record_operand(&[&output_name], out);
         }
         Ok(ConversionResult::default())
+    }
+
+    fn convert_cast_like(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        validate_cast_like_attrs(node, node_name)?;
+
+        let inputs = node.input.as_slice();
+        if inputs.len() != 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "CastLike expects 2 inputs (input, target_type), got {}",
+                inputs.len()
+            )));
+        }
+
+        let target_type = resolve_value_type(context, &inputs[1]).ok_or_else(|| {
+            OnnxError::InvalidShape(format!(
+                "CastLike could not infer target type from '{}'",
+                inputs[1]
+            ))
+        })?;
+        let cast_type = map_ast_data_type(target_type.clone())?;
+
+        let output_name = output_label(node, node_name);
+        let input = b.resolve_operand(&inputs[0])?;
+        let opts = OnnxBuilder::labeled_options(&output_name);
+        let out = b
+            .builder
+            .cast_with_options(input, cast_type, opts)
+            .map_err(map_op_error)?;
+
+        if let Some(onnx_out) = node.output.first() {
+            record_node_output(b, onnx_out, &output_name, out);
+        } else {
+            b.record_operand(&[&output_name], out);
+        }
+
+        let mut result = ConversionResult::default();
+        if let Some(onnx_out) = node.output.first() {
+            result.output_types.insert(onnx_out.clone(), target_type);
+        }
+        Ok(result)
     }
 
     fn convert_constant(
@@ -290,6 +337,39 @@ fn emit_dequantize_linear(
         .map_err(map_op_error)
 }
 
+fn validate_cast_like_attrs(node: &NodeProto, node_name: &str) -> Result<(), OnnxError> {
+    for attr in node.attribute.as_slice() {
+        match attr.name.as_str() {
+            "saturate" if attr.i != 1 => {
+                return Err(OnnxError::unsupported_op(
+                    "CastLike with non-default saturate",
+                    node_name,
+                ));
+            }
+            "round_mode" if !attr.s.is_empty() => {
+                let mode = String::from_utf8_lossy(&attr.s);
+                if mode != "up" {
+                    return Err(OnnxError::unsupported_op(
+                        "CastLike with non-default round_mode",
+                        node_name,
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn resolve_value_type(context: &ConversionContext, name: &str) -> Option<rustnn::DataType> {
+    let sanitized = sanitize_identifier(name);
+    context
+        .value_types
+        .get(name)
+        .or_else(|| context.value_types.get(&sanitized))
+        .cloned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,6 +397,7 @@ mod tests {
     fn test_conversion_handler_supports() {
         let handler = ConversionHandler;
         assert!(handler.supports("Cast"));
+        assert!(handler.supports("CastLike"));
     }
 
     #[test]

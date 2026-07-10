@@ -8,8 +8,10 @@
 use std::collections::{HashMap, HashSet};
 
 use onnx2webnn::onnx::builder::OnnxBuilder;
-use onnx2webnn::protos::onnx::{type_proto, ModelProto, TensorProto_DataType, ValueInfoProto};
-use onnx2webnn::{convert_model_proto, ConvertOptions, OnnxError, ValidatedGraph};
+use onnx2webnn::protos::onnx::{
+    type_proto, ModelProto, NodeProto, TensorProto_DataType, ValueInfoProto,
+};
+use onnx2webnn::{convert_model_proto, ConvertOptions, ValidatedGraph};
 use prost::Message;
 use rustnn::graph::OperandDescriptor;
 use rustnn::mlcontext::{MLContext, MLTensor, MLTensorDescriptor};
@@ -49,8 +51,9 @@ pub fn assert_op_matches_ort(model: ModelProto, expect: ExpectConvertOp, test_op
             let mut validated =
                 result.unwrap_or_else(|err| panic!("expected conversion success, got {err}"));
             let inputs = build_ort_inputs(&model).expect("failed to build ORT inputs");
-            let model_bytes = model.encode_to_vec();
-            let reference = run_onnx_with_inputs(&model_bytes, None, clone_ort_inputs(&inputs))
+            let reference_model = ort_reference_model(&model);
+            let reference_bytes = reference_model.encode_to_vec();
+            let reference = run_onnx_with_inputs(&reference_bytes, None, clone_ort_inputs(&inputs))
                 .unwrap_or_else(|err| panic!("ORT reference run failed: {err}"));
             let actual = dispatch_and_collect(&mut validated, &model, &inputs)
                 .unwrap_or_else(|err| panic!("rustnn dispatch failed: {err}"));
@@ -61,6 +64,38 @@ pub fn assert_op_matches_ort(model: ModelProto, expect: ExpectConvertOp, test_op
 
 fn graph_proto(model: &ModelProto) -> &onnx2webnn::protos::onnx::GraphProto {
     model.graph.as_ref().expect("model graph")
+}
+
+/// ORT may lack kernels for some ONNX ops (e.g. Swish). Decompose them for reference runs only.
+fn ort_reference_model(model: &ModelProto) -> ModelProto {
+    let mut reference = model.clone();
+    let graph = reference.graph.as_mut().expect("model graph");
+    let mut nodes = Vec::with_capacity(graph.node.len() + 4);
+    for node in graph.node.drain(..) {
+        if node.op_type == "Swish" {
+            let input = node.input.first().cloned().unwrap_or_default();
+            let output = node.output.first().cloned().unwrap_or_default();
+            let sig_out = format!("{}__sig", node.name);
+            nodes.push(NodeProto {
+                op_type: "Sigmoid".to_string(),
+                name: format!("{}__sigmoid", node.name),
+                input: vec![input.clone()],
+                output: vec![sig_out.clone()],
+                ..Default::default()
+            });
+            nodes.push(NodeProto {
+                op_type: "Mul".to_string(),
+                name: node.name,
+                input: vec![input, sig_out],
+                output: vec![output],
+                ..Default::default()
+            });
+        } else {
+            nodes.push(node);
+        }
+    }
+    graph.node = nodes;
+    reference
 }
 
 fn initializer_names(model: &ModelProto) -> HashSet<String> {

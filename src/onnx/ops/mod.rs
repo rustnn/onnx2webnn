@@ -30,12 +30,14 @@ pub mod conv;
 pub mod conversion;
 pub mod elementwise;
 pub mod matmul;
+pub mod misc;
 pub mod normalization;
 pub mod pad;
 pub mod pool;
 pub mod reduction;
 pub mod reshape;
 pub mod resize;
+pub mod rnn;
 pub mod scatter;
 pub mod utility;
 
@@ -46,12 +48,14 @@ use conv::ConvHandler;
 use conversion::ConversionHandler;
 use elementwise::ElementwiseHandler;
 use matmul::MatMulHandler;
+use misc::MiscHandler;
 use normalization::NormalizationHandler;
 use pad::PadHandler;
 use pool::PoolHandler;
 use reduction::ReductionHandler;
 use reshape::ReshapeHandler;
 use resize::ResizeHandler;
+use rnn::RnnHandler;
 use scatter::ScatterHandler;
 use utility::UtilityHandler;
 
@@ -164,6 +168,7 @@ impl OpRegistry {
             Box::new(ConvHandler),
             Box::new(PoolHandler),
             Box::new(ElementwiseHandler),
+            Box::new(MiscHandler),
             Box::new(ComparisonHandler),
             Box::new(ConditionalHandler),
             Box::new(NormalizationHandler),
@@ -175,6 +180,7 @@ impl OpRegistry {
             Box::new(ReductionHandler),
             Box::new(ActivationHandler),
             Box::new(ScatterHandler),
+            Box::new(RnnHandler),
         ];
 
         OpRegistry { handlers }

@@ -27,6 +27,7 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "Pow",
         "Min",
         "Max",
+        "Mod",
         # comparison.rs
         "Greater",
         "Less",
@@ -46,6 +47,10 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "InstanceNormalization",
         "LayerNormalization",
         "Softmax",
+        "GroupNormalization",
+        "RMSNormalization",
+        "LogSoftmax",
+        "Hardmax",
         # reshape.rs
         "Reshape",
         "Transpose",
@@ -58,6 +63,7 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "Flatten",
         # conversion.rs
         "Cast",
+        "CastLike",
         "Constant",
         "QuantizeLinear",
         "DequantizeLinear",
@@ -113,6 +119,11 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "HardSigmoid",
         "Clip",
         "PRelu",
+        "Swish",
+        "Celu",
+        "Selu",
+        "Mish",
+        "ThresholdedRelu",
         # scatter.rs
         "ScatterND",
         "ScatterElements",
@@ -120,6 +131,13 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "Resize",
         # pad.rs
         "Pad",
+        # misc.rs
+        "Mean",
+        "Sum",
+        "CumProd",
+        # rnn.rs
+        "GRU",
+        "LSTM",
     }
 )
 

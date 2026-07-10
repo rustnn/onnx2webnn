@@ -154,6 +154,10 @@ fn deterministic_bool_data(len: usize) -> Vec<u8> {
 }
 
 fn build_ort_inputs(model: &ModelProto) -> Result<Vec<OnnxInput>, String> {
+    let acosh_graph = graph_proto(model)
+        .node
+        .iter()
+        .any(|node| node.op_type == "Acosh");
     let mut inputs = Vec::new();
     for vi in feedable_inputs(model) {
         let (elem_type, shape) =
@@ -161,7 +165,12 @@ fn build_ort_inputs(model: &ModelProto) -> Result<Vec<OnnxInput>, String> {
         let count = shape.iter().product::<usize>().max(1);
         let data = match elem_type {
             x if x == TensorProto_DataType::Float as i32 => {
-                TensorData::Float32(deterministic_float_data(&vi.name, count))
+                let values = if acosh_graph {
+                    (0..count).map(|i| 1.25 + 0.5 * i as f32).collect()
+                } else {
+                    deterministic_float_data(&vi.name, count)
+                };
+                TensorData::Float32(values)
             }
             x if x == TensorProto_DataType::Int32 as i32 => {
                 let vals = deterministic_int_data(&vi.name, count);
@@ -419,6 +428,12 @@ fn assert_same_values(name: &str, expected: &[f64], actual: &[f64]) {
         "output length mismatch for {name}"
     );
     for (i, (e, a)) in expected.iter().zip(actual.iter()).enumerate() {
+        if e.is_nan() && a.is_nan() {
+            continue;
+        }
+        if e.is_infinite() && a.is_infinite() && e.signum() == a.signum() {
+            continue;
+        }
         let rounded_e = (e * 1_000_000.0).round() / 1_000_000.0;
         let rounded_a = (a * 1_000_000.0).round() / 1_000_000.0;
         assert!(

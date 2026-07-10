@@ -124,6 +124,12 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "Selu",
         "Mish",
         "ThresholdedRelu",
+        "Sinh",
+        "Cosh",
+        "Asinh",
+        "Acosh",
+        "Atanh",
+        "Shrink",
         # scatter.rs
         "ScatterND",
         "ScatterElements",

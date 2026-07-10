@@ -70,6 +70,12 @@ impl OpHandler for ActivationHandler {
                 | "Selu"
                 | "Mish"
                 | "ThresholdedRelu"
+                | "Sinh"
+                | "Cosh"
+                | "Asinh"
+                | "Acosh"
+                | "Atanh"
+                | "Shrink"
         )
     }
 
@@ -97,6 +103,12 @@ impl OpHandler for ActivationHandler {
             "Celu" => return self.convert_celu(node, &node_name, b),
             "Selu" => return self.convert_selu(node, &node_name, b),
             "ThresholdedRelu" => return self.convert_thresholded_relu(node, &node_name, b),
+            "Sinh" => return self.convert_sinh(node, &node_name, b),
+            "Cosh" => return self.convert_cosh(node, &node_name, b),
+            "Asinh" => return self.convert_asinh(node, &node_name, b),
+            "Acosh" => return self.convert_acosh(node, &node_name, b),
+            "Atanh" => return self.convert_atanh(node, &node_name, b),
+            "Shrink" => return self.convert_shrink(node, &node_name, b),
             _ => {}
         }
 
@@ -521,10 +533,336 @@ impl ActivationHandler {
         record_output(b, node, &output_name, out);
         Ok(ConversionResult::default())
     }
+
+    /// Sinh: `(exp(x) - exp(-x)) / 2`.
+    fn convert_sinh(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Sinh expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let (exp_pos, exp_neg) = exp_and_exp_neg(b, input0, &output_name)?;
+        let diff_label = step_label(&output_name, "diff");
+        let diff = b
+            .builder
+            .sub_with_options(exp_pos, exp_neg, OnnxBuilder::labeled_options(&diff_label))
+            .map_err(map_op_error)?;
+        let half = register_f32_scalar(b, &step_label(&output_name, "half"), 0.5)?;
+        let out = b
+            .builder
+            .mul_with_options(diff, half, OnnxBuilder::labeled_options(&output_name))
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Cosh: `(exp(x) + exp(-x)) / 2`.
+    fn convert_cosh(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Cosh expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let (exp_pos, exp_neg) = exp_and_exp_neg(b, input0, &output_name)?;
+        let sum_label = step_label(&output_name, "sum");
+        let sum = b
+            .builder
+            .add_with_options(exp_pos, exp_neg, OnnxBuilder::labeled_options(&sum_label))
+            .map_err(map_op_error)?;
+        let half = register_f32_scalar(b, &step_label(&output_name, "half"), 0.5)?;
+        let out = b
+            .builder
+            .mul_with_options(sum, half, OnnxBuilder::labeled_options(&output_name))
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Asinh: `log(x + sqrt(x^2 + 1))`.
+    fn convert_asinh(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Asinh expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let one = register_f32_scalar(b, &step_label(&output_name, "one"), 1.0)?;
+        let x_sq_label = step_label(&output_name, "x_sq");
+        let x_sq = b
+            .builder
+            .mul_with_options(
+                input0,
+                b.resolve_operand(&inputs[0])?,
+                OnnxBuilder::labeled_options(&x_sq_label),
+            )
+            .map_err(map_op_error)?;
+        let radicand_label = step_label(&output_name, "radicand");
+        let radicand = b
+            .builder
+            .add_with_options(x_sq, one, OnnxBuilder::labeled_options(&radicand_label))
+            .map_err(map_op_error)?;
+        let sqrt_label = step_label(&output_name, "sqrt");
+        let sqrt_term = b
+            .builder
+            .sqrt_with_options(radicand, OnnxBuilder::labeled_options(&sqrt_label))
+            .map_err(map_op_error)?;
+        let sum_label = step_label(&output_name, "sum");
+        let sum = b
+            .builder
+            .add_with_options(
+                b.resolve_operand(&inputs[0])?,
+                sqrt_term,
+                OnnxBuilder::labeled_options(&sum_label),
+            )
+            .map_err(map_op_error)?;
+        let out = b
+            .builder
+            .log_with_options(sum, OnnxBuilder::labeled_options(&output_name))
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Acosh: `log(x + sqrt(x^2 - 1))` (domain x >= 1).
+    fn convert_acosh(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Acosh expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let one = register_f32_scalar(b, &step_label(&output_name, "one"), 1.0)?;
+        let x_sq_label = step_label(&output_name, "x_sq");
+        let x_sq = b
+            .builder
+            .mul_with_options(
+                input0,
+                b.resolve_operand(&inputs[0])?,
+                OnnxBuilder::labeled_options(&x_sq_label),
+            )
+            .map_err(map_op_error)?;
+        let radicand_label = step_label(&output_name, "radicand");
+        let radicand = b
+            .builder
+            .sub_with_options(x_sq, one, OnnxBuilder::labeled_options(&radicand_label))
+            .map_err(map_op_error)?;
+        let sqrt_label = step_label(&output_name, "sqrt");
+        let sqrt_term = b
+            .builder
+            .sqrt_with_options(radicand, OnnxBuilder::labeled_options(&sqrt_label))
+            .map_err(map_op_error)?;
+        let sum_label = step_label(&output_name, "sum");
+        let sum = b
+            .builder
+            .add_with_options(
+                b.resolve_operand(&inputs[0])?,
+                sqrt_term,
+                OnnxBuilder::labeled_options(&sum_label),
+            )
+            .map_err(map_op_error)?;
+        let out = b
+            .builder
+            .log_with_options(sum, OnnxBuilder::labeled_options(&output_name))
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Atanh: `0.5 * log((1 + x) / (1 - x))`.
+    fn convert_atanh(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Atanh expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let one = register_f32_scalar(b, &step_label(&output_name, "one"), 1.0)?;
+        let num_label = step_label(&output_name, "num");
+        let num = b
+            .builder
+            .add_with_options(one, input0, OnnxBuilder::labeled_options(&num_label))
+            .map_err(map_op_error)?;
+        let one_den = register_f32_scalar(b, &step_label(&output_name, "one_den"), 1.0)?;
+        let den_label = step_label(&output_name, "den");
+        let den = b
+            .builder
+            .sub_with_options(
+                one_den,
+                b.resolve_operand(&inputs[0])?,
+                OnnxBuilder::labeled_options(&den_label),
+            )
+            .map_err(map_op_error)?;
+        let quot_label = step_label(&output_name, "quot");
+        let quot = b
+            .builder
+            .div_with_options(num, den, OnnxBuilder::labeled_options(&quot_label))
+            .map_err(map_op_error)?;
+        let log_label = step_label(&output_name, "log");
+        let log_quot = b
+            .builder
+            .log_with_options(quot, OnnxBuilder::labeled_options(&log_label))
+            .map_err(map_op_error)?;
+        let half = register_f32_scalar(b, &step_label(&output_name, "half"), 0.5)?;
+        let out = b
+            .builder
+            .mul_with_options(half, log_quot, OnnxBuilder::labeled_options(&output_name))
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Shrink: `x - bias` if `x > lambd`, `x + bias` if `x < -lambd`, else `0`.
+    fn convert_shrink(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "Shrink expects 1 input, got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let lambd = attr_f64(node, "lambd").unwrap_or(0.5);
+        let bias = attr_f64(node, "bias").unwrap_or(0.0);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let lambda_op = register_f32_scalar(b, &step_label(&output_name, "lambd"), lambd as f32)?;
+        let neg_lambda =
+            register_f32_scalar(b, &step_label(&output_name, "neg_lambd"), -(lambd as f32))?;
+        let bias_op = register_f32_scalar(b, &step_label(&output_name, "bias"), bias as f32)?;
+        let zero = register_f32_scalar(b, &step_label(&output_name, "zero"), 0.0)?;
+
+        let gt_label = step_label(&output_name, "gt");
+        let gt = b
+            .builder
+            .greater_with_options(input0, lambda_op, OnnxBuilder::labeled_options(&gt_label))
+            .map_err(map_op_error)?;
+        let lt_label = step_label(&output_name, "lt");
+        let lt = b
+            .builder
+            .lesser_with_options(
+                b.resolve_operand(&inputs[0])?,
+                neg_lambda,
+                OnnxBuilder::labeled_options(&lt_label),
+            )
+            .map_err(map_op_error)?;
+
+        let high_label = step_label(&output_name, "high");
+        let high = b
+            .builder
+            .sub_with_options(
+                b.resolve_operand(&inputs[0])?,
+                bias_op,
+                OnnxBuilder::labeled_options(&high_label),
+            )
+            .map_err(map_op_error)?;
+        let bias_low = register_f32_scalar(b, &step_label(&output_name, "bias_low"), bias as f32)?;
+        let low_label = step_label(&output_name, "low");
+        let low = b
+            .builder
+            .add_with_options(
+                b.resolve_operand(&inputs[0])?,
+                bias_low,
+                OnnxBuilder::labeled_options(&low_label),
+            )
+            .map_err(map_op_error)?;
+
+        let mid_label = step_label(&output_name, "mid");
+        let mid = b
+            .builder
+            .where_with_options(lt, low, zero, OnnxBuilder::labeled_options(&mid_label))
+            .map_err(map_op_error)?;
+        let out = b
+            .builder
+            .where_with_options(gt, high, mid, OnnxBuilder::labeled_options(&output_name))
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
 }
 
 fn step_label(base: &str, step: &str) -> String {
     format!("{base}__{step}")
+}
+
+fn exp_and_exp_neg(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    input: MLOperand,
+    base: &str,
+) -> Result<(MLOperand, MLOperand), OnnxError> {
+    let exp_pos_label = step_label(base, "exp_pos");
+    let exp_pos = b
+        .builder
+        .exp_with_options(input, OnnxBuilder::labeled_options(&exp_pos_label))
+        .map_err(map_op_error)?;
+    let neg_label = step_label(base, "neg");
+    let neg = b
+        .builder
+        .neg_with_options(input, OnnxBuilder::labeled_options(&neg_label))
+        .map_err(map_op_error)?;
+    let exp_neg_label = step_label(base, "exp_neg");
+    let exp_neg = b
+        .builder
+        .exp_with_options(neg, OnnxBuilder::labeled_options(&exp_neg_label))
+        .map_err(map_op_error)?;
+    Ok((exp_pos, exp_neg))
 }
 
 fn register_f32_scalar(
@@ -763,6 +1101,12 @@ mod tests {
         assert!(handler.supports("Selu"));
         assert!(handler.supports("Mish"));
         assert!(handler.supports("ThresholdedRelu"));
+        assert!(handler.supports("Sinh"));
+        assert!(handler.supports("Cosh"));
+        assert!(handler.supports("Asinh"));
+        assert!(handler.supports("Acosh"));
+        assert!(handler.supports("Atanh"));
+        assert!(handler.supports("Shrink"));
         assert!(!handler.supports("Add"));
     }
 

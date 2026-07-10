@@ -7,6 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use half::f16;
 use onnx2webnn::onnx::builder::OnnxBuilder;
 use onnx2webnn::protos::onnx::{
     type_proto, ModelProto, NodeProto, TensorProto_DataType, ValueInfoProto,
@@ -144,6 +145,18 @@ fn deterministic_float_data(name: &str, len: usize) -> Vec<f32> {
         .collect()
 }
 
+fn deterministic_float16_data(name: &str, len: usize, acosh_graph: bool) -> Vec<u16> {
+    let values = if acosh_graph {
+        (0..len).map(|i| 1.25 + 0.5 * i as f32).collect()
+    } else {
+        deterministic_float_data(name, len)
+    };
+    values
+        .into_iter()
+        .map(|v| f16::from_f32(v).to_bits())
+        .collect()
+}
+
 fn deterministic_int_data(name: &str, len: usize) -> Vec<i64> {
     let seed = (name.bytes().map(u64::from).sum::<u64>() % 5) as i64;
     (0..len).map(|i| (i as i64 + seed) % 7).collect()
@@ -171,6 +184,9 @@ fn build_ort_inputs(model: &ModelProto) -> Result<Vec<OnnxInput>, String> {
                     deterministic_float_data(&vi.name, count)
                 };
                 TensorData::Float32(values)
+            }
+            x if x == TensorProto_DataType::Float16 as i32 => {
+                TensorData::Float16(deterministic_float16_data(&vi.name, count, acosh_graph))
             }
             x if x == TensorProto_DataType::Int32 as i32 => {
                 let vals = deterministic_int_data(&vi.name, count);
@@ -242,6 +258,7 @@ fn operand_descriptor_to_tensor_desc(desc: &OperandDescriptor) -> MLTensorDescri
 fn write_ort_input(context: &mut MLContext, tensor: &MLTensor, input: &OnnxInput) {
     match &input.data {
         TensorData::Float32(data) => context.write_tensor(tensor, data).unwrap(),
+        TensorData::Float16(data) => context.write_tensor(tensor, data).unwrap(),
         TensorData::Int32(data) => context.write_tensor(tensor, data).unwrap(),
         TensorData::Int64(data) => context.write_tensor(tensor, data).unwrap(),
         TensorData::Uint8(data) => context.write_tensor(tensor, data).unwrap(),
@@ -341,6 +358,16 @@ fn read_tensor_as_f64(
                 .map_err(|e| e.to_string())?;
             Ok(buf.into_iter().map(f64::from).collect())
         }
+        rustnn::DataType::Float16 => {
+            let mut buf = vec![0u16; count];
+            context
+                .read_tensor(tensor, &mut buf)
+                .map_err(|e| e.to_string())?;
+            Ok(buf
+                .into_iter()
+                .map(|v| f64::from(f16::from_bits(v).to_f32()))
+                .collect())
+        }
         rustnn::DataType::Int32 => {
             let mut buf = vec![0i32; count];
             context
@@ -364,6 +391,15 @@ fn read_tensor_as_f64(
         }
         other => Err(format!("unsupported output read dtype {other:?}")),
     }
+}
+
+fn value_info_elem_type(vi: &ValueInfoProto) -> Option<i32> {
+    let ty = vi.r#type.as_ref()?;
+    let tensor = match ty.value.as_ref()? {
+        type_proto::Value::TensorType(t) => t,
+        _ => return None,
+    };
+    Some(tensor.elem_type)
 }
 
 fn compare_outputs(
@@ -396,7 +432,8 @@ fn compare_outputs(
                     .map(|data| data.iter().map(|&v| v as f64).collect())
             })
             .unwrap_or_else(|| ort.data.clone());
-        assert_same_values(&out.name, &expected, got);
+        let is_float16 = value_info_elem_type(out) == Some(TensorProto_DataType::Float16 as i32);
+        assert_same_values(&out.name, &expected, got, is_float16);
     }
 }
 
@@ -421,7 +458,7 @@ fn assert_same_bool_values(name: &str, expected: &[bool], actual: &[f64]) {
     }
 }
 
-fn assert_same_values(name: &str, expected: &[f64], actual: &[f64]) {
+fn assert_same_values(name: &str, expected: &[f64], actual: &[f64], is_float16: bool) {
     assert_eq!(
         expected.len(),
         actual.len(),
@@ -436,8 +473,9 @@ fn assert_same_values(name: &str, expected: &[f64], actual: &[f64]) {
         }
         let rounded_e = (e * 1_000_000.0).round() / 1_000_000.0;
         let rounded_a = (a * 1_000_000.0).round() / 1_000_000.0;
+        let abs_tolerance = if is_float16 { 1e-2 } else { 1e-5 };
         assert!(
-            (rounded_e - rounded_a).abs() <= 1e-5,
+            (rounded_e - rounded_a).abs() <= abs_tolerance,
             "output {name}[{i}] mismatch: ORT={rounded_e}, rustnn={rounded_a}"
         );
     }

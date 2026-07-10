@@ -40,6 +40,11 @@ def _format_u8_list(values: list[int]) -> str:
     return f"&[{inner}]"
 
 
+def _format_u16_list(values: list[int]) -> str:
+    inner = ", ".join(str(int(v)) for v in values)
+    return f"&[{inner}]"
+
+
 def _format_i8_list(values: list[int]) -> str:
     inner = ", ".join(str(int(v)) for v in values)
     return f"&[{inner}]"
@@ -62,6 +67,9 @@ def _emit_initializer(init: TensorProto, *, indent: str) -> str:
     if init.data_type == TensorProto.FLOAT:
         data = _format_f32_list(arr.flatten().astype(np.float32).tolist())
         return f'{indent}f32_init("{name}", {shape}, {data}),'
+    if init.data_type == TensorProto.FLOAT16:
+        data = _format_u16_list(arr.flatten().astype(np.float16).view(np.uint16).tolist())
+        return f'{indent}f16_init("{name}", {shape}, {data}),'
     if init.data_type == TensorProto.INT32:
         data = _format_i64_list(arr.flatten().astype(np.int32).tolist())
         return f'{indent}i32_init("{name}", {shape}, {data}),'
@@ -123,6 +131,7 @@ def _emit_value_info(vi, *, indent: str, is_output: bool) -> str:
         suffix = "output" if is_output else "input"
         mapping = {
             TensorProto.FLOAT: "f32",
+            TensorProto.FLOAT16: "f16",
             TensorProto.INT8: "i8",
             TensorProto.INT32: "i32",
             TensorProto.INT64: "i64",

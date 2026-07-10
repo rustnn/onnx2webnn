@@ -230,15 +230,22 @@ def _elem_type_from_type_str(type_str: str, *, default: int = TensorProto.FLOAT)
         return TensorProto.UINT8
     if "string" in lower:
         return TensorProto.STRING
-    if type_str in ("T", "V", "T1", "T2", "T3", "tensor(float)"):
+    if type_str == "tensor(float)":
+        return TensorProto.FLOAT
+    if type_str in ("T", "V", "T1", "T2", "T3"):
         return default
     return default
 
 
-def _default_input_elem_type(op_type: str) -> int:
+def _default_input_elem_type(op_type: str, *, requested: int = TensorProto.FLOAT) -> int:
     if op_type in BOOL_INPUT_OPS:
         return TensorProto.BOOL
-    return TensorProto.FLOAT
+    return requested
+
+
+def _fp16_eligible_type_str(type_str: str) -> bool:
+    """True for schema type variables that should follow the fixture's float dtype."""
+    return type_str in ("T", "V", "T1", "T2", "T3") or "float16" in type_str.lower()
 
 
 def _output_elem_type(op_type: str, out_param, input_elem_type: int) -> int:
@@ -448,6 +455,8 @@ def _int64_initializer(name: str, shape: list[int], values: np.ndarray | None = 
 def _scalar_initializer(name: str, value: float | int, dtype: int = TensorProto.FLOAT) -> TensorProto:
     if dtype == TensorProto.INT64:
         arr = np.array(value, dtype=np.int64)
+    elif dtype == TensorProto.FLOAT16:
+        arr = np.array(value, dtype=np.float16)
     else:
         arr = np.array(value, dtype=np.float32)
     return numpy_helper.from_array(arr, name)
@@ -531,12 +540,14 @@ def _build_constant(opset: int) -> ModelProto:
     return model
 
 
-def _build_generic(op_type: str, opset: int) -> ModelProto:
+def _build_generic(
+    op_type: str, opset: int, *, input_elem_type: int = TensorProto.FLOAT
+) -> ModelProto:
     schema = defs.get_schema(op_type, opset, ONNX_DOMAIN)
     initializers: list[TensorProto] = []
     graph_inputs = []
     node_inputs: list[str] = []
-    input_elem_type = _default_input_elem_type(op_type)
+    input_elem_type = _default_input_elem_type(op_type, requested=input_elem_type)
     data_rank = len(DEFAULT_VECTOR_SHAPE)
     input_shape = list(DEFAULT_VECTOR_SHAPE)
 
@@ -680,10 +691,86 @@ CUSTOM_BUILDERS: dict[str, Callable[[int], ModelProto]] = {
 }
 
 
-def build_test_model(op_type: str, opset: int) -> ModelProto:
+def _fp16_eligible_names(model: ModelProto, op_type: str, opset: int) -> set[str]:
+    graph = model.graph
+    if graph is None:
+        return set()
+    eligible: set[str] = set()
+    for node in graph.node:
+        if node.op_type != op_type:
+            continue
+        schema = defs.get_schema(node.op_type, opset, ONNX_DOMAIN)
+        input_idx = 0
+        for param in schema.inputs:
+            if _is_optional(param):
+                continue
+            if _is_variadic(param):
+                if _fp16_eligible_type_str(param.type_str):
+                    eligible.update(name for name in node.input[input_idx:] if name)
+                break
+            if input_idx >= len(node.input):
+                break
+            if _fp16_eligible_type_str(param.type_str) and node.input[input_idx]:
+                eligible.add(node.input[input_idx])
+            input_idx += 1
+        output_idx = 0
+        for param in _schema_outputs(schema, node.op_type):
+            if _is_variadic(param):
+                if _fp16_eligible_type_str(param.type_str):
+                    eligible.update(name for name in node.output[output_idx:] if name)
+                break
+            if output_idx >= len(node.output):
+                break
+            if _fp16_eligible_type_str(param.type_str) and node.output[output_idx]:
+                eligible.add(node.output[output_idx])
+            output_idx += 1
+    return eligible
+
+
+def _set_value_info_elem_type(value_info, elem_type: int) -> None:
+    if value_info.type.HasField("tensor_type"):
+        value_info.type.tensor_type.elem_type = elem_type
+
+
+def _to_float16_tensor(tensor: TensorProto) -> None:
+    arr = numpy_helper.to_array(tensor).astype(np.float16)
+    converted = numpy_helper.from_array(arr, tensor.name)
+    tensor.CopyFrom(converted)
+
+
+def _convert_float_fixture_to_float16(model: ModelProto, op_type: str, opset: int) -> ModelProto:
+    eligible = _fp16_eligible_names(model, op_type, opset)
+    if not eligible:
+        raise ValueError(f"{op_type} fixture has no fp16-eligible tensor values")
+    graph = model.graph
+    if graph is None:
+        raise ValueError("model missing graph")
+
+    for value_info in [*graph.input, *graph.output, *graph.value_info]:
+        if value_info.name in eligible and value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
+            _set_value_info_elem_type(value_info, TensorProto.FLOAT16)
+    for initializer in graph.initializer:
+        if initializer.name in eligible and initializer.data_type == TensorProto.FLOAT:
+            _to_float16_tensor(initializer)
+    for node in graph.node:
+        if any(name in eligible for name in node.output):
+            for attr in node.attribute:
+                if attr.HasField("t") and attr.t.data_type == TensorProto.FLOAT:
+                    _to_float16_tensor(attr.t)
+
+    checker.check_model(model)
+    return model
+
+
+def build_test_model(
+    op_type: str, opset: int, *, input_elem_type: int = TensorProto.FLOAT
+) -> ModelProto:
     if op_type in CUSTOM_BUILDERS:
-        return CUSTOM_BUILDERS[op_type](opset)
-    return _build_generic(op_type, opset)
+        model = CUSTOM_BUILDERS[op_type](opset)
+        if input_elem_type == TensorProto.FLOAT16:
+            return _convert_float_fixture_to_float16(model, op_type, opset)
+        return model
+    return _build_generic(op_type, opset, input_elem_type=input_elem_type)
 
 
 

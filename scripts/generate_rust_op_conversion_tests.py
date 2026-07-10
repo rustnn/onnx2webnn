@@ -11,6 +11,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from onnx import TensorProto
+
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -36,6 +38,32 @@ _RUST_SPDX_HEADER = """\
  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */"""
+
+_FP16_EXCLUDED_OPS = frozenset(
+    {
+        # Bool-only logical operators.
+        "And",
+        "Not",
+        "Or",
+        "Xor",
+        # Constant and Shape have little value as fp16 runtime coverage.
+        "Constant",
+        "Shape",
+        # Known fp16 lowering/reference gaps; keep these on f32 until handlers
+        # preserve fp16 end-to-end and reference parity is established.
+        "Cast",
+        "Celu",
+        "ConstantOfShape",
+        "GRU",
+        "GroupNormalization",
+        "Hardmax",
+        "LSTM",
+        "QuantizeLinear",
+        "RMSNormalization",
+        "Range",
+        "Shrink",
+    }
+)
 
 # Operator → category folder. Unlisted ops fall into `misc`.
 _OP_CATEGORIES: dict[str, frozenset[str]] = {
@@ -365,12 +393,14 @@ def _category_for(op_type: str) -> str:
     return _OP_TO_CATEGORY.get(op_type, "misc")
 
 
-def _test_fn_name(opset: int) -> str:
-    return f"convert_op_opset_{opset}"
+def _test_fn_name(opset: int, *, dtype_suffix: str = "") -> str:
+    suffix = f"_{dtype_suffix}" if dtype_suffix else ""
+    return f"convert_op_opset_{opset}{suffix}"
 
 
-def _build_fn_name(opset: int) -> str:
-    return f"build_fixture_opset_{opset}"
+def _build_fn_name(opset: int, *, dtype_suffix: str = "") -> str:
+    suffix = f"_{dtype_suffix}" if dtype_suffix else ""
+    return f"build_fixture_opset_{opset}{suffix}"
 
 
 def _emit_ignored_test(
@@ -396,16 +426,17 @@ def _emit_op_variant(
     expect: str,
     model=None,
     build_error: str | None = None,
+    dtype_suffix: str = "",
 ) -> list[str]:
     if build_error is not None:
         return _emit_ignored_test(op_type=op_type, opset=opset, build_error=build_error)
     assert model is not None
-    parts = emit_build_function(model, fn_name=_build_fn_name(opset))
+    parts = emit_build_function(model, fn_name=_build_fn_name(opset, dtype_suffix=dtype_suffix))
     parts.extend(
         [
             "#[test]",
-            f"fn {_test_fn_name(opset)}() {{",
-            f"    assert_op_matches_ort({_build_fn_name(opset)}(), {expect}, {opset});",
+            f"fn {_test_fn_name(opset, dtype_suffix=dtype_suffix)}() {{",
+            f"    assert_op_matches_ort({_build_fn_name(opset, dtype_suffix=dtype_suffix)}(), {expect}, {opset});",
             "}",
             "",
         ]
@@ -446,6 +477,7 @@ def _emit_op_file(
                 expect=variant["expect"],
                 model=variant.get("model"),
                 build_error=variant.get("build_error"),
+                dtype_suffix=variant.get("dtype_suffix", ""),
             )
         )
     return "\n".join(parts)
@@ -474,6 +506,10 @@ def _write_mod_rs(path: Path, modules: list[str]) -> None:
         lines.append(f"pub mod {_rust_mod_name(module)};")
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _should_emit_float16_variant(op_type: str, expect: str) -> bool:
+    return expect == "ExpectConvertOp::Success" and op_type not in _FP16_EXCLUDED_OPS
 
 
 def generate(*, min_opset: int, max_opset: int) -> tuple[int, int, int]:
@@ -518,6 +554,26 @@ def generate(*, min_opset: int, max_opset: int) -> tuple[int, int, int]:
                     {"opset": opset, "expect": expect, "build_error": str(exc)}
                 )
                 skipped += 1
+
+        if _should_emit_float16_variant(op_type, expect):
+            opset = fixture_opsets[-1]
+            try:
+                model = build_test_model(
+                    op_type, opset, input_elem_type=TensorProto.FLOAT16
+                )
+                variants.append(
+                    {
+                        "opset": opset,
+                        "expect": expect,
+                        "model": model,
+                        "dtype_suffix": "float16",
+                    }
+                )
+                built += 1
+            except Exception:
+                # Not every WebNN-supported op has a meaningful fp16 ONNX fixture
+                # (e.g. concrete tensor(float) control inputs). Keep generation quiet.
+                pass
 
         content = _emit_op_file(op_type=op_type, variants=variants)
         out_file.write_text(content, encoding="utf-8")

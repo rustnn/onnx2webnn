@@ -23,6 +23,7 @@ use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
 use crate::protos::onnx::{NodeProto, TensorProto, TensorProto_DataType};
+use half::f16;
 use rustnn::mlcontext::MLOperand;
 use rustnn::operator_options::{
     MLClampOptions, MLEluOptions, MLHardSigmoidOptions, MLLeakyReluOptions,
@@ -100,15 +101,17 @@ impl OpHandler for ActivationHandler {
             }
             "Swish" => return self.convert_swish(node, &node_name, b),
             "Mish" => return self.convert_mish(node, &node_name, b),
-            "Celu" => return self.convert_celu(node, &node_name, b),
-            "Selu" => return self.convert_selu(node, &node_name, b),
-            "ThresholdedRelu" => return self.convert_thresholded_relu(node, &node_name, b),
-            "Sinh" => return self.convert_sinh(node, &node_name, b),
-            "Cosh" => return self.convert_cosh(node, &node_name, b),
-            "Asinh" => return self.convert_asinh(node, &node_name, b),
-            "Acosh" => return self.convert_acosh(node, &node_name, b),
-            "Atanh" => return self.convert_atanh(node, &node_name, b),
-            "Shrink" => return self.convert_shrink(node, &node_name, b),
+            "Celu" => return self.convert_celu(node, &node_name, context, b),
+            "Selu" => return self.convert_selu(node, &node_name, context, b),
+            "ThresholdedRelu" => {
+                return self.convert_thresholded_relu(node, &node_name, context, b)
+            }
+            "Sinh" => return self.convert_sinh(node, &node_name, context, b),
+            "Cosh" => return self.convert_cosh(node, &node_name, context, b),
+            "Asinh" => return self.convert_asinh(node, &node_name, context, b),
+            "Acosh" => return self.convert_acosh(node, &node_name, context, b),
+            "Atanh" => return self.convert_atanh(node, &node_name, context, b),
+            "Shrink" => return self.convert_shrink(node, &node_name, context, b),
             _ => {}
         }
 
@@ -373,6 +376,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -386,13 +390,14 @@ impl ActivationHandler {
         let output_name = output_name_for(node, node_name);
         let alpha = attr_f64(node, "alpha").unwrap_or(1.0);
         let input0 = b.resolve_operand(&inputs[0])?;
+        let input_dtype = input_data_type(context, &inputs[0]);
 
         let alpha_name = step_label(&output_name, "alpha");
-        let alpha_op = register_f32_scalar(b, &alpha_name, alpha as f32)?;
+        let alpha_op = register_scalar_like(b, &alpha_name, alpha as f32, input_dtype)?;
         let one_name = step_label(&output_name, "one");
-        let one_op = register_f32_scalar(b, &one_name, 1.0)?;
+        let one_op = register_scalar_like(b, &one_name, 1.0, input_dtype)?;
         let zero_name = step_label(&output_name, "zero");
-        let zero_op = register_f32_scalar(b, &zero_name, 0.0)?;
+        let zero_op = register_scalar_like(b, &zero_name, 0.0, input_dtype)?;
 
         let div_label = step_label(&output_name, "div");
         let x_over_alpha = b
@@ -448,6 +453,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -462,6 +468,7 @@ impl ActivationHandler {
         let alpha = attr_f64(node, "alpha").unwrap_or(1.6732632423543773);
         let gamma = attr_f64(node, "gamma").unwrap_or(1.0507010298910828);
         let input0 = b.resolve_operand(&inputs[0])?;
+        let input_dtype = input_data_type(context, &inputs[0]);
         let elu_label = step_label(&output_name, "elu");
         let elu_out = b
             .builder
@@ -474,7 +481,7 @@ impl ActivationHandler {
             )
             .map_err(map_op_error)?;
         let gamma_name = step_label(&output_name, "gamma");
-        let gamma_op = register_f32_scalar(b, &gamma_name, gamma as f32)?;
+        let gamma_op = register_scalar_like(b, &gamma_name, gamma as f32, input_dtype)?;
         let out = b
             .builder
             .mul_with_options(
@@ -493,6 +500,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -506,10 +514,11 @@ impl ActivationHandler {
         let output_name = output_name_for(node, node_name);
         let threshold = attr_f64(node, "alpha").unwrap_or(1.0);
         let input0 = b.resolve_operand(&inputs[0])?;
+        let input_dtype = input_data_type(context, &inputs[0]);
         let threshold_name = step_label(&output_name, "threshold");
-        let threshold_op = register_f32_scalar(b, &threshold_name, threshold as f32)?;
+        let threshold_op = register_scalar_like(b, &threshold_name, threshold as f32, input_dtype)?;
         let zero_name = step_label(&output_name, "zero");
-        let zero_op = register_f32_scalar(b, &zero_name, 0.0)?;
+        let zero_op = register_scalar_like(b, &zero_name, 0.0, input_dtype)?;
 
         let gt_label = step_label(&output_name, "gt");
         let cond = b
@@ -539,6 +548,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -551,13 +561,14 @@ impl ActivationHandler {
 
         let output_name = output_name_for(node, node_name);
         let input0 = b.resolve_operand(&inputs[0])?;
+        let input_dtype = input_data_type(context, &inputs[0]);
         let (exp_pos, exp_neg) = exp_and_exp_neg(b, input0, &output_name)?;
         let diff_label = step_label(&output_name, "diff");
         let diff = b
             .builder
             .sub_with_options(exp_pos, exp_neg, OnnxBuilder::labeled_options(&diff_label))
             .map_err(map_op_error)?;
-        let half = register_f32_scalar(b, &step_label(&output_name, "half"), 0.5)?;
+        let half = register_scalar_like(b, &step_label(&output_name, "half"), 0.5, input_dtype)?;
         let out = b
             .builder
             .mul_with_options(diff, half, OnnxBuilder::labeled_options(&output_name))
@@ -572,6 +583,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -584,13 +596,14 @@ impl ActivationHandler {
 
         let output_name = output_name_for(node, node_name);
         let input0 = b.resolve_operand(&inputs[0])?;
+        let input_dtype = input_data_type(context, &inputs[0]);
         let (exp_pos, exp_neg) = exp_and_exp_neg(b, input0, &output_name)?;
         let sum_label = step_label(&output_name, "sum");
         let sum = b
             .builder
             .add_with_options(exp_pos, exp_neg, OnnxBuilder::labeled_options(&sum_label))
             .map_err(map_op_error)?;
-        let half = register_f32_scalar(b, &step_label(&output_name, "half"), 0.5)?;
+        let half = register_scalar_like(b, &step_label(&output_name, "half"), 0.5, input_dtype)?;
         let out = b
             .builder
             .mul_with_options(sum, half, OnnxBuilder::labeled_options(&output_name))
@@ -605,6 +618,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -617,7 +631,8 @@ impl ActivationHandler {
 
         let output_name = output_name_for(node, node_name);
         let input0 = b.resolve_operand(&inputs[0])?;
-        let one = register_f32_scalar(b, &step_label(&output_name, "one"), 1.0)?;
+        let input_dtype = input_data_type(context, &inputs[0]);
+        let one = register_scalar_like(b, &step_label(&output_name, "one"), 1.0, input_dtype)?;
         let x_sq_label = step_label(&output_name, "x_sq");
         let x_sq = b
             .builder
@@ -660,6 +675,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -672,7 +688,8 @@ impl ActivationHandler {
 
         let output_name = output_name_for(node, node_name);
         let input0 = b.resolve_operand(&inputs[0])?;
-        let one = register_f32_scalar(b, &step_label(&output_name, "one"), 1.0)?;
+        let input_dtype = input_data_type(context, &inputs[0]);
+        let one = register_scalar_like(b, &step_label(&output_name, "one"), 1.0, input_dtype)?;
         let x_sq_label = step_label(&output_name, "x_sq");
         let x_sq = b
             .builder
@@ -715,6 +732,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -727,13 +745,15 @@ impl ActivationHandler {
 
         let output_name = output_name_for(node, node_name);
         let input0 = b.resolve_operand(&inputs[0])?;
-        let one = register_f32_scalar(b, &step_label(&output_name, "one"), 1.0)?;
+        let input_dtype = input_data_type(context, &inputs[0]);
+        let one = register_scalar_like(b, &step_label(&output_name, "one"), 1.0, input_dtype)?;
         let num_label = step_label(&output_name, "num");
         let num = b
             .builder
             .add_with_options(one, input0, OnnxBuilder::labeled_options(&num_label))
             .map_err(map_op_error)?;
-        let one_den = register_f32_scalar(b, &step_label(&output_name, "one_den"), 1.0)?;
+        let one_den =
+            register_scalar_like(b, &step_label(&output_name, "one_den"), 1.0, input_dtype)?;
         let den_label = step_label(&output_name, "den");
         let den = b
             .builder
@@ -753,7 +773,7 @@ impl ActivationHandler {
             .builder
             .log_with_options(quot, OnnxBuilder::labeled_options(&log_label))
             .map_err(map_op_error)?;
-        let half = register_f32_scalar(b, &step_label(&output_name, "half"), 0.5)?;
+        let half = register_scalar_like(b, &step_label(&output_name, "half"), 0.5, input_dtype)?;
         let out = b
             .builder
             .mul_with_options(half, log_quot, OnnxBuilder::labeled_options(&output_name))
@@ -768,6 +788,7 @@ impl ActivationHandler {
         &self,
         node: &NodeProto,
         node_name: &str,
+        context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
@@ -782,11 +803,26 @@ impl ActivationHandler {
         let lambd = attr_f64(node, "lambd").unwrap_or(0.5);
         let bias = attr_f64(node, "bias").unwrap_or(0.0);
         let input0 = b.resolve_operand(&inputs[0])?;
-        let lambda_op = register_f32_scalar(b, &step_label(&output_name, "lambd"), lambd as f32)?;
-        let neg_lambda =
-            register_f32_scalar(b, &step_label(&output_name, "neg_lambd"), -(lambd as f32))?;
-        let bias_op = register_f32_scalar(b, &step_label(&output_name, "bias"), bias as f32)?;
-        let zero = register_f32_scalar(b, &step_label(&output_name, "zero"), 0.0)?;
+        let input_dtype = input_data_type(context, &inputs[0]);
+        let lambda_op = register_scalar_like(
+            b,
+            &step_label(&output_name, "lambd"),
+            lambd as f32,
+            input_dtype,
+        )?;
+        let neg_lambda = register_scalar_like(
+            b,
+            &step_label(&output_name, "neg_lambd"),
+            -(lambd as f32),
+            input_dtype,
+        )?;
+        let bias_op = register_scalar_like(
+            b,
+            &step_label(&output_name, "bias"),
+            bias as f32,
+            input_dtype,
+        )?;
+        let zero = register_scalar_like(b, &step_label(&output_name, "zero"), 0.0, input_dtype)?;
 
         let gt_label = step_label(&output_name, "gt");
         let gt = b
@@ -812,7 +848,12 @@ impl ActivationHandler {
                 OnnxBuilder::labeled_options(&high_label),
             )
             .map_err(map_op_error)?;
-        let bias_low = register_f32_scalar(b, &step_label(&output_name, "bias_low"), bias as f32)?;
+        let bias_low = register_scalar_like(
+            b,
+            &step_label(&output_name, "bias_low"),
+            bias as f32,
+            input_dtype,
+        )?;
         let low_label = step_label(&output_name, "low");
         let low = b
             .builder
@@ -872,6 +913,31 @@ fn register_f32_scalar(
 ) -> Result<MLOperand, OnnxError> {
     b.register_constant_from_bytes(name, DataType::Float32, &[1], &value.to_le_bytes())?;
     b.resolve_operand(name)
+}
+
+fn register_scalar_like(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    name: &str,
+    value: f32,
+    data_type: DataType,
+) -> Result<MLOperand, OnnxError> {
+    match data_type {
+        DataType::Float16 => {
+            let bits = f16::from_f32(value).to_bits();
+            b.register_constant_from_bytes(name, DataType::Float16, &[1], &bits.to_le_bytes())?;
+            b.resolve_operand(name)
+        }
+        _ => register_f32_scalar(b, name, value),
+    }
+}
+
+fn input_data_type(context: &ConversionContext, input: &str) -> DataType {
+    context
+        .value_types
+        .get(input)
+        .or_else(|| context.value_types.get(&sanitize_identifier(input)))
+        .copied()
+        .unwrap_or(DataType::Float32)
 }
 
 fn output_name_for(node: &NodeProto, node_name: &str) -> String {

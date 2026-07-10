@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-use rustnn::DataType;
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::builder_helpers::{output_label, record_node_output};
 use crate::onnx::convert::OnnxError;
@@ -43,10 +42,7 @@ impl OpHandler for ScatterHandler {
             Self::get_string_attr(node, "reduction").unwrap_or_else(|| "none".to_string());
         if reduction != "none" {
             let node_name = node.name.clone();
-            return Err(OnnxError::UnsupportedOp {
-                op: format!("ScatterND(reduction={reduction})"),
-                node: node_name,
-            });
+            return Err(OnnxError::unsupported_op(format!("ScatterND(reduction={reduction})"), node_name,));
         }
 
         let inputs = node.input.as_slice();
@@ -176,7 +172,9 @@ mod tests {
         let tc = TestContext::new();
         let context = tc.ctx();
         match crate::onnx::ops::convert_handler_with_context(&handler, &node, &context) {
-            Err(OnnxError::UnsupportedOp { op, .. }) => assert!(op.contains("reduction=add")),
+            Err(OnnxError::UnsupportedOps(ops)) => {
+                assert!(ops[0].op.contains("reduction=add"));
+            }
             other => panic!("expected UnsupportedOp, got {other:?}"),
         }
     }

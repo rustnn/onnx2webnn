@@ -59,10 +59,7 @@ impl OpHandler for PoolHandler {
             "GlobalAveragePool" => {
                 self.convert_global_pool(node, &node_name, context, b, PoolKind::Average)
             }
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name,)),
         }
     }
 }
@@ -206,10 +203,7 @@ fn build_pool_2d_options(
     }
 
     if matches!(kind, PoolKind::Average) && attrs.count_include_pad {
-        return Err(OnnxError::UnsupportedOp {
-            op: "AveragePool(count_include_pad=1)".to_string(),
-            node: String::new(),
-        });
+        return Err(OnnxError::unsupported_op("AveragePool(count_include_pad=1)".to_string(), String::new(),));
     }
 
     let mut opts = MLPool2dOptions {
@@ -293,10 +287,7 @@ impl PoolHandler {
             )));
         }
         if matches!(kind, PoolKind::Max) && node.output.len() > 1 {
-            return Err(OnnxError::UnsupportedOp {
-                op: "MaxPool(with indices output)".to_string(),
-                node: node_name.to_string(),
-            });
+            return Err(OnnxError::unsupported_op("MaxPool(with indices output)".to_string(), node_name.to_string(),));
         }
 
         let input_raw = inputs[0].as_str();
@@ -330,10 +321,10 @@ impl PoolHandler {
                 input_shape.as_deref(),
                 b,
             ),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: format!("{}{}D", op_label, spatial_rank),
-                node: node_name.to_string(),
-            }),
+            _ => Err(OnnxError::unsupported_op(
+                format!("{}{}D", op_label, spatial_rank),
+                node_name.to_string(),
+            )),
         }
     }
 
@@ -538,10 +529,10 @@ impl PoolHandler {
                 }
                 Ok(ConversionResult::default())
             }
-            _ => Err(OnnxError::UnsupportedOp {
-                op: format!("{}{}D", op_label, spatial.len()),
-                node: node_name.to_string(),
-            }),
+            _ => Err(OnnxError::unsupported_op(
+                format!("{}{}D", op_label, spatial.len()),
+                node_name.to_string(),
+            )),
         }
     }
 }
@@ -803,8 +794,8 @@ mod tests {
         );
         let err = crate::onnx::ops::convert_handler_with_context(&h, &node, &ctx).unwrap_err();
         match err {
-            OnnxError::UnsupportedOp { op, .. } => {
-                assert!(op.contains("count_include_pad"));
+            OnnxError::UnsupportedOps(ops) => {
+                assert!(ops[0].op.contains("count_include_pad"));
             }
             other => panic!("expected UnsupportedOp, got {:?}", other),
         }
@@ -900,8 +891,8 @@ mod tests {
         );
         let err = crate::onnx::ops::convert_handler_with_context(&h, &node, &ctx).unwrap_err();
         match err {
-            OnnxError::UnsupportedOp { op, .. } => {
-                assert!(op.contains("indices"));
+            OnnxError::UnsupportedOps(ops) => {
+                assert!(ops[0].op.contains("indices"));
             }
             other => panic!("expected UnsupportedOp, got {:?}", other),
         }

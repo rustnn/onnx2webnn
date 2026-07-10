@@ -48,11 +48,9 @@ impl OpHandler for ElementwiseHandler {
         };
 
         let inputs = node.input.as_slice();
-        if inputs.len() != 2 {
+        if inputs.is_empty() {
             return Err(OnnxError::InvalidShape(format!(
-                "{} expects 2 inputs, got {}",
-                op_type,
-                inputs.len()
+                "{op_type} expects at least 1 input"
             )));
         }
 
@@ -62,10 +60,26 @@ impl OpHandler for ElementwiseHandler {
             sanitize_identifier(&node.output.as_slice()[0].to_string())
         };
 
-        let input0 = b.resolve_operand(&inputs[0])?;
-        let input1 = b.resolve_operand(&inputs[1])?;
-        let opts = OnnxBuilder::labeled_options(&output_name);
-        let out = emit_binary(op_type, b, input0, input1, opts, &node_name)?;
+        let out = if inputs.len() == 1 {
+            let input0 = b.resolve_operand(&inputs[0])?;
+            let opts = OnnxBuilder::labeled_options(&output_name);
+            b.builder
+                .identity_with_options(input0, opts)
+                .map_err(map_op_error)?
+        } else {
+            let mut acc = b.resolve_operand(&inputs[0])?;
+            for (step, input_name) in inputs[1..].iter().enumerate() {
+                let next = b.resolve_operand(input_name)?;
+                let label = if step + 2 == inputs.len() {
+                    output_name.clone()
+                } else {
+                    format!("{output_name}__fold_{step}")
+                };
+                let opts = OnnxBuilder::labeled_options(&label);
+                acc = emit_binary(op_type, b, acc, next, opts, &node_name)?;
+            }
+            acc
+        };
 
         if let Some(output) = node.output.as_slice().first() {
             b.record_operand(&[output.as_str(), &output_name], out);
@@ -115,10 +129,7 @@ fn emit_binary(
             .max_with_options(a, b_in, opts)
             .map_err(map_op_error)?,
         _ => {
-            return Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name.to_string(),
-            })
+            return Err(OnnxError::unsupported_op(op_type.to_string(), node_name.to_string(),))
         }
     })
 }
@@ -183,6 +194,20 @@ mod tests {
     fn test_convert_max() {
         let handler = ElementwiseHandler;
         let node = create_test_node("Max", vec!["a", "b"], vec!["c"]);
+        crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
+    }
+
+    #[test]
+    fn test_convert_variadic_min_three_inputs() {
+        let handler = ElementwiseHandler;
+        let node = create_test_node("Min", vec!["a", "b", "c"], vec!["out"]);
+        crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
+    }
+
+    #[test]
+    fn test_convert_variadic_max_four_inputs() {
+        let handler = ElementwiseHandler;
+        let node = create_test_node("Max", vec!["a", "b", "c", "d"], vec!["out"]);
         crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
     }
 }

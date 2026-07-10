@@ -18,20 +18,22 @@
 
 // Main ONNX to WebNN conversion logic
 
-use rustnn::DataType; use rustnn::graph::{Dimension, DynamicDimension};
 use crate::onnx::builder::{map_rustnn_error, tensor_proto_to_bytes, OnnxBuilder};
 use crate::protos::onnx::{
     tensor_shape_proto::dimension::Value as DimensionValue, type_proto::Value as TypeProtoValue,
     ModelProto, TensorProto_DataType,
 };
 use prost::Message;
+use rustnn::graph::{Dimension, DynamicDimension};
 use rustnn::mlcontext::{
     MLContext, MLContextOptions, MLGraph, MLGraphBuilder, MLOperand, MLPowerPreference,
 };
+use rustnn::DataType;
 use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 use webnn_onnx_utils::{data_types as utils_data_types, identifiers};
 
@@ -41,16 +43,38 @@ pub struct ValidatedGraph<'ctx> {
     pub graph: MLGraph<'ctx>,
 }
 
-const MIN_SUPPORTED_OPSET: i64 = 11;
-const MAX_SUPPORTED_OPSET: i64 = 18;
+const MIN_SUPPORTED_OPSET: i64 = 9;
+const MAX_SUPPORTED_OPSET: i64 = 26;
 
 /// ONNX ops that lower to WebNN element-wise logical ops and must emit `uint8` outputs.
 /// Do not inline-fold them as integer constants (e.g. i64), since `where()` requires uint8 conditions.
 fn is_element_wise_logical_onnx_op(op_type: &str) -> bool {
     matches!(
         op_type,
-        "Equal" | "Greater" | "Less" | "GreaterOrEqual" | "LessOrEqual"
+        "Equal"
+            | "Greater"
+            | "Less"
+            | "GreaterOrEqual"
+            | "LessOrEqual"
+            | "Not"
+            | "And"
+            | "Or"
+            | "Xor"
     )
+}
+
+/// One unsupported ONNX node reported during conversion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedOpEntry {
+    pub op: String,
+    pub node: String,
+}
+
+fn format_unsupported_ops_list(ops: &[UnsupportedOpEntry]) -> String {
+    ops.iter()
+        .map(|entry| format!("{} (node: {})", entry.op, entry.node))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Debug, Error)]
@@ -64,8 +88,8 @@ pub enum OnnxError {
     #[error("unsupported ONNX opset version {version} for domain '{domain}'")]
     UnsupportedOpset { domain: String, version: i64 },
 
-    #[error("unsupported operator: {op} (node: {node})")]
-    UnsupportedOp { op: String, node: String },
+    #[error("unsupported operator(s): {}", format_unsupported_ops_list(.0))]
+    UnsupportedOps(Vec<UnsupportedOpEntry>),
 
     #[error("missing required attribute: {attr} in {op}")]
     MissingAttribute { attr: String, op: String },
@@ -78,6 +102,29 @@ pub enum OnnxError {
 
     #[error("shape inference failed for node: {0}")]
     ShapeInference(String),
+}
+
+impl OnnxError {
+    /// Report a single unsupported operator/node pair.
+    pub fn unsupported_op(op: impl Into<String>, node: impl Into<String>) -> Self {
+        Self::UnsupportedOps(vec![UnsupportedOpEntry {
+            op: op.into(),
+            node: node.into(),
+        }])
+    }
+
+    /// True when conversion failed because one or more operators are unsupported.
+    pub fn is_unsupported_op(&self) -> bool {
+        matches!(self, Self::UnsupportedOps(_))
+    }
+
+    /// Unsupported operator entries, when this error is [`Self::UnsupportedOps`].
+    pub fn unsupported_ops(&self) -> Option<&[UnsupportedOpEntry]> {
+        match self {
+            Self::UnsupportedOps(ops) => Some(ops),
+            _ => None,
+        }
+    }
 }
 
 /// Sanitize ONNX identifiers for WebNN DSL compatibility
@@ -122,6 +169,8 @@ pub struct ConvertOptions {
     pub optimize: bool,
     /// Experimental: preserve unresolved dynamic input dimensions in graph metadata
     pub experimental_dynamic_inputs: bool,
+    /// Directory used to resolve ONNX external tensor data files.
+    pub external_data_dir: Option<PathBuf>,
 }
 
 impl Default for ConvertOptions {
@@ -130,8 +179,76 @@ impl Default for ConvertOptions {
             free_dim_overrides: HashMap::new(),
             optimize: false,
             experimental_dynamic_inputs: false,
+            external_data_dir: None,
         }
     }
+}
+
+fn tensor_has_inline_data(tensor: &crate::protos::onnx::TensorProto) -> bool {
+    !tensor.raw_data.as_slice().is_empty()
+        || !tensor.float_data.as_slice().is_empty()
+        || !tensor.int32_data.as_slice().is_empty()
+        || !tensor.int64_data.as_slice().is_empty()
+        || !tensor.double_data.as_slice().is_empty()
+}
+
+fn tensor_has_data(tensor: &crate::protos::onnx::TensorProto) -> bool {
+    tensor_has_inline_data(tensor) || !tensor.external_data.as_slice().is_empty()
+}
+
+fn external_data_value<'a>(
+    tensor: &'a crate::protos::onnx::TensorProto,
+    key: &str,
+) -> Option<&'a str> {
+    tensor
+        .external_data
+        .iter()
+        .find(|entry| entry.key == key)
+        .map(|entry| entry.value.as_str())
+}
+
+fn tensor_proto_to_bytes_for_conversion(
+    tensor: &crate::protos::onnx::TensorProto,
+    external_data_dir: Option<&Path>,
+) -> Result<Vec<u8>, OnnxError> {
+    if tensor_has_inline_data(tensor) {
+        return tensor_proto_to_bytes(tensor);
+    }
+
+    let Some(location) = external_data_value(tensor, "location") else {
+        return tensor_proto_to_bytes(tensor);
+    };
+    let Some(base_dir) = external_data_dir else {
+        return Err(OnnxError::InvalidShape(format!(
+            "tensor '{}' uses external data '{}' but no model directory is available",
+            tensor.name, location
+        )));
+    };
+
+    let location_path = Path::new(location);
+    let external_path = if location_path.is_absolute() {
+        location_path.to_path_buf()
+    } else {
+        base_dir.join(location_path)
+    };
+    let offset = external_data_value(tensor, "offset")
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
+    let length = external_data_value(tensor, "length").and_then(|v| v.parse::<usize>().ok());
+
+    let mut file = fs::File::open(&external_path)?;
+    if offset > 0 {
+        file.seek(SeekFrom::Start(offset))?;
+    }
+
+    let mut bytes = Vec::new();
+    if let Some(length) = length {
+        bytes.resize(length, 0);
+        file.read_exact(&mut bytes)?;
+    } else {
+        file.read_to_end(&mut bytes)?;
+    }
+    Ok(bytes)
 }
 
 struct TensorInfo {
@@ -212,6 +329,31 @@ impl OnnxConverter {
         }
 
         let onnx_graph = self.model.graph.as_ref().unwrap();
+
+        // Fail fast on unsupported operators before any graph setup. Input/initializer
+        // registration below can error on tensor kinds an unsupported op happens to use
+        // (e.g. bool/string initializers), which would otherwise mask the real cause with a
+        // confusing shape/builder error instead of a clean `UnsupportedOps`.
+        //
+        // **Domain behavior (today):** the pre-scan keys handlers by `op_type` only; per-node
+        // `domain` (when present on `NodeProto`) is not consulted. That matches
+        // [`OpRegistry::convert_node`] and [`OpRegistry::is_supported`]. Opset gating above
+        // applies only to the standard `ai.onnx` domain (empty or `"ai.onnx"` import); other
+        // `opset_import` entries are not version-checked yet.
+        //
+        // **Custom / vendor domains later:** to support non-official ops (e.g.
+        // `com.microsoft.FusedConv`), extend handlers to register on `(domain, op_type)` and
+        // update this loop to use the same key. Until then, a custom-domain node whose `op_type`
+        // collides with an `ai.onnx` name may pass the pre-scan and be lowered incorrectly —
+        // domain-aware dispatch is required before enabling those graphs.
+        {
+            let registry = crate::onnx::ops::OpRegistry::new();
+            let unsupported = registry.collect_unsupported_nodes(onnx_graph.node.as_slice());
+            if !unsupported.is_empty() {
+                return Err(OnnxError::UnsupportedOps(unsupported));
+            }
+        }
+
         let mut value_name_map: HashMap<String, String> = HashMap::new();
         let mut effective_overrides = options.free_dim_overrides.clone();
         let mut inference_overrides = effective_overrides.clone();
@@ -254,7 +396,9 @@ impl OnnxConverter {
             HashMap::from([("batch_size", 1), ("batch", 1), ("n", 1), ("b", 1)]);
         let dynamic_max_for_dim = |name: &str| -> u32 {
             let lower = name.to_ascii_lowercase();
-            if lower.contains("past")
+            if lower.ends_with("_dynamic_axes_1") {
+                8
+            } else if lower.contains("past")
                 || lower.contains("seq")
                 || lower.contains("length")
                 || lower == "s"
@@ -346,10 +490,9 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                         }
                                     }
                                     DimensionValue::DimParam(dim_param) => {
-                                        if let Some(v) = resolve_dim_override(
-                                            dim_param,
-                                            &effective_overrides,
-                                        ) {
+                                        if let Some(v) =
+                                            resolve_dim_override(dim_param, &effective_overrides)
+                                        {
                                             resolved.push(Dimension::Static(v));
                                         } else if options.experimental_dynamic_inputs {
                                             let max_size = dynamic_max_for_dim(dim_param);
@@ -413,16 +556,8 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
         // Process initializers (constants/weights)
         for initializer in onnx_graph.initializer.as_slice() {
             let name = sanitize_identifier(initializer.name.as_str());
-            let raw_data = initializer.raw_data.as_slice();
 
-            // Skip initializers with no data (check both raw_data and typed data fields)
-            let has_data = !raw_data.is_empty()
-                || !initializer.float_data.as_slice().is_empty()
-                || !initializer.int32_data.as_slice().is_empty()
-                || !initializer.int64_data.as_slice().is_empty()
-                || !initializer.double_data.as_slice().is_empty();
-
-            if !has_data {
+            if !tensor_has_data(initializer) {
                 crate::debug_println!("Warning: Skipping initializer '{}' with no data", name);
                 continue;
             }
@@ -436,8 +571,16 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 .map(|d| *d as u32)
                 .collect();
 
-            let bytes = tensor_proto_to_bytes(initializer)?;
-            b.register_constant_from_bytes(initializer.name.as_str(), data_type.clone(), &shape, &bytes)?;
+            let bytes = tensor_proto_to_bytes_for_conversion(
+                initializer,
+                options.external_data_dir.as_deref(),
+            )?;
+            b.register_constant_from_bytes(
+                initializer.name.as_str(),
+                data_type.clone(),
+                &shape,
+                &bytes,
+            )?;
 
             value_name_map.insert(initializer.name.as_str().to_string(), name.clone());
             value_name_map.insert(name.clone(), name.clone());
@@ -451,14 +594,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
         // Build initializers map for resolving constant shapes
         let mut initializers_map = std::collections::HashMap::new();
         for initializer in onnx_graph.initializer.as_slice() {
-            // Skip initializers with no data (check both raw_data and typed data fields)
-            let has_data = !initializer.raw_data.as_slice().is_empty()
-                || !initializer.float_data.as_slice().is_empty()
-                || !initializer.int32_data.as_slice().is_empty()
-                || !initializer.int64_data.as_slice().is_empty()
-                || !initializer.double_data.as_slice().is_empty();
-
-            if !has_data {
+            if !tensor_has_data(initializer) {
                 continue;
             }
             initializers_map.insert(initializer.name.as_str().to_string(), initializer);
@@ -504,8 +640,10 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                                         dim_param,
                                                         &inference_overrides,
                                                     )
-                                                    .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
-                                                    as i64,
+                                                    .unwrap_or_else(|| {
+                                                        dynamic_max_for_dim(dim_param)
+                                                    })
+                                                        as i64,
                                                 );
                                             } else if let Some(v) = resolve_dim_for_inference(
                                                 dim_param,
@@ -535,11 +673,16 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                     match dim_value {
                                         DimensionValue::DimValue(v) => {
                                             if *v > 0 {
-                                                dims.push(rustnn::graph::Dimension::Static(*v as u32));
+                                                dims.push(rustnn::graph::Dimension::Static(
+                                                    *v as u32,
+                                                ));
                                             }
                                         }
                                         DimensionValue::DimParam(dim_param) => {
-                                            dims.push(dimension_for_param(dim_param, &inference_overrides));
+                                            dims.push(dimension_for_param(
+                                                dim_param,
+                                                &inference_overrides,
+                                            ));
                                         }
                                     }
                                 }
@@ -556,14 +699,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
 
         // Add initializer shapes
         for initializer in onnx_graph.initializer.as_slice() {
-            // Skip initializers with no data (check both raw_data and typed data fields)
-            let has_data = !initializer.raw_data.as_slice().is_empty()
-                || !initializer.float_data.as_slice().is_empty()
-                || !initializer.int32_data.as_slice().is_empty()
-                || !initializer.int64_data.as_slice().is_empty()
-                || !initializer.double_data.as_slice().is_empty();
-
-            if !has_data {
+            if !tensor_has_data(initializer) {
                 continue;
             }
             let shape: Vec<i64> = initializer.dims.as_slice().to_vec();
@@ -605,8 +741,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                     DimensionValue::DimParam(dim_param) => {
                                         if options.experimental_dynamic_inputs {
                                             shape.push(
-                                                resolve_dim_override(dim_param, &inference_overrides)
-                                                    .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
+                                                resolve_dim_override(
+                                                    dim_param,
+                                                    &inference_overrides,
+                                                )
+                                                .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
                                                     as i64,
                                             );
                                         } else if let Some(v) = resolve_dim_for_inference(
@@ -641,7 +780,10 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                         }
                                     }
                                     DimensionValue::DimParam(dim_param) => {
-                                        dims.push(dimension_for_param(dim_param, &inference_overrides));
+                                        dims.push(dimension_for_param(
+                                            dim_param,
+                                            &inference_overrides,
+                                        ));
                                     }
                                 }
                             }
@@ -849,6 +991,387 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
             crate::debug_println!("[NODE CONV] /model/rotary_emb/Where_output_0 = {:?}", val);
         }
         for onnx_node in onnx_graph.node.as_slice() {
+            match onnx_node.op_type.as_str() {
+                "Shape" => {
+                    if let (Some(input), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        if let Some(shape) = value_shapes.get(input.as_str()).cloned() {
+                            const_values.insert(out.to_string(), shape.clone());
+                            value_shapes.insert(out.to_string(), vec![shape.len() as i64]);
+                            value_shapes.insert(sanitize_identifier(out), vec![shape.len() as i64]);
+                            value_types.insert(out.to_string(), DataType::Int64);
+                        }
+                    }
+                }
+                "Gather" => {
+                    if let (Some(data_name), Some(indices_name), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.input.as_slice().get(1),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        let data = const_values.get(data_name.as_str()).cloned();
+                        let indices = const_values.get(indices_name.as_str()).cloned();
+                        if let (Some(data), Some(indices)) = (data, indices) {
+                            let axis = onnx_node
+                                .attribute
+                                .as_slice()
+                                .iter()
+                                .find(|a| a.name.as_str() == "axis" && a.i != 0)
+                                .map(|a| a.i)
+                                .unwrap_or(0);
+                            if axis == 0 {
+                                let gathered: Vec<i64> = indices
+                                    .iter()
+                                    .filter_map(|&idx| {
+                                        let i = if idx < 0 {
+                                            (data.len() as i64 + idx) as usize
+                                        } else {
+                                            idx as usize
+                                        };
+                                        data.get(i).copied()
+                                    })
+                                    .collect();
+                                if !gathered.is_empty() {
+                                    const_values.insert(out.to_string(), gathered.clone());
+                                    let out_shape = if gathered.len() == 1 {
+                                        Vec::new()
+                                    } else {
+                                        vec![gathered.len() as i64]
+                                    };
+                                    value_shapes.insert(out.to_string(), out_shape.clone());
+                                    value_shapes.insert(sanitize_identifier(out), out_shape);
+                                    value_types.insert(out.to_string(), DataType::Int64);
+                                }
+                            }
+                        }
+                    }
+                }
+                "Cast" => {
+                    if let (Some(input), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        if let Some(values) = const_values.get(input.as_str()).cloned() {
+                            const_values.insert(out.to_string(), values);
+                            if let Some(shape) = value_shapes.get(input.as_str()).cloned() {
+                                value_shapes.insert(out.to_string(), shape.clone());
+                                value_shapes.insert(sanitize_identifier(out), shape);
+                            }
+                            if let Some(dtype) = onnx_node
+                                .attribute
+                                .as_slice()
+                                .iter()
+                                .find(|a| a.name.as_str() == "to" && a.i != 0)
+                                .and_then(|a| map_onnx_data_type(a.i as i32).ok())
+                            {
+                                value_types.insert(out.to_string(), dtype);
+                            }
+                        }
+                    }
+                }
+                "Unsqueeze" => {
+                    if let (Some(input), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        if let Some(values) = const_values.get(input.as_str()).cloned() {
+                            const_values.insert(out.to_string(), values.clone());
+                            let mut shape = value_shapes
+                                .get(input.as_str())
+                                .cloned()
+                                .unwrap_or_else(|| {
+                                    if values.len() <= 1 {
+                                        Vec::new()
+                                    } else {
+                                        vec![values.len() as i64]
+                                    }
+                                });
+                            let mut axes = onnx_node
+                                .attribute
+                                .as_slice()
+                                .iter()
+                                .find(|a| a.name.as_str() == "axes")
+                                .map(|a| a.ints.clone())
+                                .unwrap_or_default();
+                            if axes.is_empty() {
+                                if let Some(axis_input) = onnx_node.input.as_slice().get(1) {
+                                    axes = const_values
+                                        .get(axis_input.as_str())
+                                        .cloned()
+                                        .unwrap_or_default();
+                                }
+                            }
+                            axes.sort();
+                            for axis in axes {
+                                let idx = if axis < 0 {
+                                    (shape.len() as i64 + axis + 1).max(0) as usize
+                                } else {
+                                    axis as usize
+                                };
+                                if idx <= shape.len() {
+                                    shape.insert(idx, 1);
+                                }
+                            }
+                            value_shapes.insert(out.to_string(), shape.clone());
+                            value_shapes.insert(sanitize_identifier(out), shape);
+                            if let Some(dtype) = value_types.get(input.as_str()).cloned() {
+                                value_types.insert(out.to_string(), dtype);
+                            }
+                        }
+                    }
+                }
+                "Squeeze" => {
+                    if let (Some(input), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        if let Some(values) = const_values
+                            .get(input.as_str())
+                            .or_else(|| const_values.get(&sanitize_identifier(input)))
+                            .or_else(|| const_values.get(input.trim_start_matches('/')))
+                            .cloned()
+                        {
+                            const_values.insert(out.to_string(), values.clone());
+                            let out_shape = if values.len() <= 1 {
+                                Vec::new()
+                            } else {
+                                vec![values.len() as i64]
+                            };
+                            value_shapes.insert(out.to_string(), out_shape.clone());
+                            value_shapes.insert(sanitize_identifier(out), out_shape);
+                            if let Some(dtype) = value_types.get(input.as_str()).cloned() {
+                                value_types.insert(out.to_string(), dtype);
+                            }
+                        }
+                    }
+                }
+                "Concat" => {
+                    if let Some(out) = onnx_node.output.as_slice().first() {
+                        let axis = onnx_node
+                            .attribute
+                            .as_slice()
+                            .iter()
+                            .find(|a| a.name.as_str() == "axis" && a.i != 0)
+                            .map(|a| a.i)
+                            .unwrap_or(0);
+                        if axis == 0 || axis == -1 {
+                            let mut values = Vec::new();
+                            let mut all_const = true;
+                            for input in onnx_node.input.as_slice() {
+                                if let Some(input_values) = const_values.get(input.as_str()) {
+                                    values.extend_from_slice(input_values);
+                                } else {
+                                    all_const = false;
+                                    break;
+                                }
+                            }
+                            if all_const {
+                                const_values.insert(out.to_string(), values.clone());
+                                value_shapes.insert(out.to_string(), vec![values.len() as i64]);
+                                value_shapes
+                                    .insert(sanitize_identifier(out), vec![values.len() as i64]);
+                                value_types.insert(out.to_string(), DataType::Int64);
+                            }
+                        }
+                    }
+                }
+                "ConstantOfShape" => {
+                    if let (Some(shape_input), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        let used_as_expand_shape = onnx_graph.node.as_slice().iter().any(|node| {
+                            node.op_type.as_str() == "Expand"
+                                && node
+                                    .input
+                                    .as_slice()
+                                    .get(1)
+                                    .map(|input| input == out)
+                                    .unwrap_or(false)
+                        });
+                        if !used_as_expand_shape {
+                            if let Some(shape_values) = const_values
+                                .get(shape_input.as_str())
+                                .or_else(|| const_values.get(&sanitize_identifier(shape_input)))
+                                .or_else(|| const_values.get(shape_input.trim_start_matches('/')))
+                                .cloned()
+                            {
+                                let numel = shape_values
+                                    .iter()
+                                    .try_fold(1usize, |acc, &d| {
+                                        usize::try_from(d).ok().map(|v| acc.saturating_mul(v))
+                                    })
+                                    .unwrap_or(0);
+                                const_values.insert(out.to_string(), vec![0; numel]);
+                                value_shapes.insert(out.to_string(), shape_values.clone());
+                                value_shapes.insert(sanitize_identifier(out), shape_values);
+                                value_types.insert(out.to_string(), DataType::Int64);
+                            }
+                        }
+                    }
+                }
+                "Reshape" => {
+                    if let (Some(data_input), Some(shape_input), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.input.as_slice().get(1),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        let data = const_values
+                            .get(data_input.as_str())
+                            .or_else(|| const_values.get(&sanitize_identifier(data_input)))
+                            .or_else(|| const_values.get(data_input.trim_start_matches('/')))
+                            .cloned();
+                        let target = const_values
+                            .get(shape_input.as_str())
+                            .or_else(|| const_values.get(&sanitize_identifier(shape_input)))
+                            .or_else(|| const_values.get(shape_input.trim_start_matches('/')))
+                            .cloned();
+                        if let (Some(data), Some(mut target)) = (data, target) {
+                            if target.contains(&-1) {
+                                let known: i64 = target.iter().filter(|&&d| d != -1).product();
+                                if known != 0 {
+                                    if let Some(idx) = target.iter().position(|&d| d == -1) {
+                                        target[idx] = data.len() as i64 / known;
+                                    }
+                                }
+                            }
+                            const_values.insert(out.to_string(), data);
+                            value_shapes.insert(out.to_string(), target.clone());
+                            value_shapes.insert(sanitize_identifier(out), target);
+                        }
+                    }
+                }
+                "Transpose" => {
+                    if let (Some(input), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        let data = const_values
+                            .get(input.as_str())
+                            .or_else(|| const_values.get(&sanitize_identifier(input)))
+                            .or_else(|| const_values.get(input.trim_start_matches('/')))
+                            .cloned();
+                        let shape = value_shapes
+                            .get(input.as_str())
+                            .or_else(|| value_shapes.get(&sanitize_identifier(input)))
+                            .or_else(|| value_shapes.get(input.trim_start_matches('/')))
+                            .cloned();
+                        if let (Some(data), Some(shape)) = (data, shape) {
+                            let perm: Vec<usize> = onnx_node
+                                .attribute
+                                .as_slice()
+                                .iter()
+                                .find(|a| a.name.as_str() == "perm")
+                                .map(|a| a.ints.iter().map(|&i| i as usize).collect())
+                                .unwrap_or_else(|| (0..shape.len()).rev().collect());
+                            if shape.len() == 2 && perm == [1, 0] {
+                                let rows = shape[0] as usize;
+                                let cols = shape[1] as usize;
+                                if data.len() == rows.saturating_mul(cols) {
+                                    let mut transposed = vec![0; data.len()];
+                                    for r in 0..rows {
+                                        for c in 0..cols {
+                                            transposed[c * rows + r] = data[r * cols + c];
+                                        }
+                                    }
+                                    let out_shape = vec![shape[1], shape[0]];
+                                    const_values.insert(out.to_string(), transposed);
+                                    value_shapes.insert(out.to_string(), out_shape.clone());
+                                    value_shapes.insert(sanitize_identifier(out), out_shape);
+                                }
+                            }
+                        }
+                    }
+                }
+                "Slice" => {
+                    if let (Some(data_input), Some(out)) = (
+                        onnx_node.input.as_slice().first(),
+                        onnx_node.output.as_slice().first(),
+                    ) {
+                        let data = const_values
+                            .get(data_input.as_str())
+                            .or_else(|| const_values.get(&sanitize_identifier(data_input)))
+                            .or_else(|| const_values.get(data_input.trim_start_matches('/')))
+                            .cloned();
+                        let shape = value_shapes
+                            .get(data_input.as_str())
+                            .or_else(|| value_shapes.get(&sanitize_identifier(data_input)))
+                            .or_else(|| value_shapes.get(data_input.trim_start_matches('/')))
+                            .cloned();
+                        if let (Some(data), Some(shape)) = (data, shape) {
+                            let values = |idx: usize| {
+                                onnx_node.input.as_slice().get(idx).and_then(|name| {
+                                    const_values
+                                        .get(name.as_str())
+                                        .or_else(|| const_values.get(&sanitize_identifier(name)))
+                                        .or_else(|| const_values.get(name.trim_start_matches('/')))
+                                        .cloned()
+                                })
+                            };
+                            if let (Some(starts), Some(ends), Some(axes)) =
+                                (values(1), values(2), values(3))
+                            {
+                                let steps = values(4).unwrap_or_else(|| vec![1; axes.len()]);
+                                if shape.len() == 1
+                                    && axes == [0]
+                                    && steps == [1]
+                                    && !starts.is_empty()
+                                    && !ends.is_empty()
+                                {
+                                    let dim = shape[0];
+                                    let mut start = starts[0];
+                                    let mut end = ends[0];
+                                    if start < 0 {
+                                        start += dim;
+                                    }
+                                    if end == i64::MAX {
+                                        end = dim;
+                                    } else if end < 0 {
+                                        end += dim;
+                                    }
+                                    start = start.clamp(0, dim);
+                                    end = end.clamp(0, dim);
+                                    if end >= start {
+                                        let start = start as usize;
+                                        let end = end as usize;
+                                        const_values
+                                            .insert(out.to_string(), data[start..end].to_vec());
+                                        value_shapes
+                                            .insert(out.to_string(), vec![(end - start) as i64]);
+                                        value_shapes.insert(
+                                            sanitize_identifier(out),
+                                            vec![(end - start) as i64],
+                                        );
+                                    }
+                                }
+                                if shape.len() == 2
+                                    && starts == [-1]
+                                    && !ends.is_empty()
+                                    && ends[0] < -shape[0]
+                                    && axes == [0]
+                                    && steps == [-1]
+                                {
+                                    let rows = shape[0] as usize;
+                                    let cols = shape[1] as usize;
+                                    if data.len() == rows.saturating_mul(cols) {
+                                        let mut reversed = Vec::with_capacity(data.len());
+                                        for r in (0..rows).rev() {
+                                            reversed
+                                                .extend_from_slice(&data[r * cols..(r + 1) * cols]);
+                                        }
+                                        const_values.insert(out.to_string(), reversed);
+                                        value_shapes.insert(out.to_string(), shape.clone());
+                                        value_shapes.insert(sanitize_identifier(out), shape);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
             // If all outputs are compile-time constants, emit them directly and skip conversion
             let outputs = onnx_node.output.as_slice();
             let has_dynamic_output_metadata = outputs.iter().any(|o| {
@@ -859,6 +1382,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
             if !outputs.is_empty()
                 && !has_dynamic_output_metadata
                 && onnx_node.op_type.as_str() != "Cast"
+                && onnx_node.op_type.as_str() != "Constant"
                 && onnx_node.op_type.as_str() != "ConstantOfShape"
                 && !is_element_wise_logical_onnx_op(onnx_node.op_type.as_str())
                 && outputs
@@ -935,7 +1459,12 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         }
 
                         let shape_u32: Vec<u32> = shape.iter().map(|d| *d as u32).collect();
-                        b.register_constant_from_bytes(&const_name, dtype.clone(), &shape_u32, &bytes)?;
+                        b.register_constant_from_bytes(
+                            &const_name,
+                            dtype.clone(),
+                            &shape_u32,
+                            &bytes,
+                        )?;
 
                         value_name_map.insert(out.to_string(), const_name.clone());
                         value_name_map.insert(const_name.clone(), const_name.clone());
@@ -963,23 +1492,285 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 value_types.insert(webnn_id, dtype);
             }
 
+            if onnx_node.op_type.as_str() == "Range" && onnx_node.input.as_slice().len() == 3 {
+                if let Some(out) = onnx_node.output.as_slice().first() {
+                    let scalar = |name: &str, values: &HashMap<String, Vec<i64>>| {
+                        values
+                            .get(name)
+                            .or_else(|| values.get(&sanitize_identifier(name)))
+                            .or_else(|| values.get(name.trim_start_matches('/')))
+                            .and_then(|v| v.first().copied())
+                    };
+                    if let (Some(start), Some(limit), Some(delta)) = (
+                        scalar(onnx_node.input[0].as_str(), &const_values),
+                        scalar(onnx_node.input[1].as_str(), &const_values),
+                        scalar(onnx_node.input[2].as_str(), &const_values),
+                    ) {
+                        if delta != 0 {
+                            let mut values = Vec::new();
+                            let mut v = start;
+                            if delta > 0 {
+                                while v < limit {
+                                    values.push(v);
+                                    v += delta;
+                                }
+                            } else {
+                                while v > limit {
+                                    values.push(v);
+                                    v += delta;
+                                }
+                            }
+                            const_values.insert(out.to_string(), values.clone());
+                            value_shapes.insert(out.to_string(), vec![values.len() as i64]);
+                            value_shapes
+                                .insert(sanitize_identifier(out), vec![values.len() as i64]);
+                            value_types.insert(out.to_string(), DataType::Int64);
+                        }
+                    }
+                }
+            }
+            if onnx_node.op_type.as_str() == "Expand" {
+                if let (Some(data_input), Some(out)) = (
+                    onnx_node.input.as_slice().first(),
+                    onnx_node.output.as_slice().first(),
+                ) {
+                    if let Some(input_shape) = value_shapes
+                        .get(data_input.as_str())
+                        .or_else(|| value_shapes.get(&sanitize_identifier(data_input)))
+                        .or_else(|| value_shapes.get(data_input.trim_start_matches('/')))
+                        .cloned()
+                    {
+                        value_shapes.insert(out.to_string(), input_shape.clone());
+                        value_shapes.insert(sanitize_identifier(out), input_shape);
+                    }
+                }
+            }
+            if onnx_node.op_type.as_str() == "ConstantOfShape" {
+                if let (Some(shape_input), Some(out)) = (
+                    onnx_node.input.as_slice().first(),
+                    onnx_node.output.as_slice().first(),
+                ) {
+                    if let Some(shape_values) = const_values
+                        .get(shape_input.as_str())
+                        .or_else(|| const_values.get(&sanitize_identifier(shape_input)))
+                        .or_else(|| const_values.get(shape_input.trim_start_matches('/')))
+                        .cloned()
+                    {
+                        value_shapes.insert(out.to_string(), shape_values.clone());
+                        value_shapes.insert(sanitize_identifier(out), shape_values);
+                        value_types
+                            .entry(out.to_string())
+                            .or_insert(DataType::Int64);
+                    }
+                }
+            }
+            if onnx_node.op_type.as_str() == "Split" {
+                if let Some(data_input) = onnx_node.input.as_slice().first() {
+                    let input_shape = value_shapes
+                        .get(data_input.as_str())
+                        .or_else(|| value_shapes.get(&sanitize_identifier(data_input)))
+                        .or_else(|| value_shapes.get(data_input.trim_start_matches('/')))
+                        .cloned();
+                    if let Some(input_shape) = input_shape {
+                        let rank = input_shape.len();
+                        let axis = onnx_node
+                            .attribute
+                            .as_slice()
+                            .iter()
+                            .find(|a| a.name.as_str() == "axis" && a.i != 0)
+                            .map(|a| a.i)
+                            .unwrap_or(0);
+                        let axis = if axis < 0 {
+                            (rank as i64 + axis) as usize
+                        } else {
+                            axis as usize
+                        };
+                        if axis < rank {
+                            let split_values = onnx_node
+                                .attribute
+                                .as_slice()
+                                .iter()
+                                .find(|a| a.name.as_str() == "split" && !a.ints.is_empty())
+                                .map(|a| a.ints.clone())
+                                .unwrap_or_else(|| {
+                                    let outputs = onnx_node.output.len() as i64;
+                                    if outputs > 0 {
+                                        vec![input_shape[axis] / outputs; outputs as usize]
+                                    } else {
+                                        Vec::new()
+                                    }
+                                });
+                            for (out, split) in
+                                onnx_node.output.as_slice().iter().zip(split_values.iter())
+                            {
+                                let mut out_shape = input_shape.clone();
+                                out_shape[axis] = *split;
+                                value_shapes.insert(out.to_string(), out_shape.clone());
+                                value_shapes.insert(sanitize_identifier(out), out_shape);
+                            }
+                        }
+                    }
+                }
+            }
+            if onnx_node.op_type.as_str() == "Where" {
+                if let (Some(true_input), Some(false_input), Some(out)) = (
+                    onnx_node.input.as_slice().get(1),
+                    onnx_node.input.as_slice().get(2),
+                    onnx_node.output.as_slice().first(),
+                ) {
+                    let shape_of = |name: &str, shapes: &HashMap<String, Vec<i64>>| {
+                        shapes
+                            .get(name)
+                            .or_else(|| shapes.get(&sanitize_identifier(name)))
+                            .or_else(|| shapes.get(name.trim_start_matches('/')))
+                            .cloned()
+                    };
+                    let true_shape = shape_of(true_input.as_str(), &value_shapes);
+                    let false_shape = shape_of(false_input.as_str(), &value_shapes);
+                    let output_shape = match (true_shape, false_shape) {
+                        (Some(shape), Some(other)) if shape.is_empty() => Some(other),
+                        (Some(shape), Some(other)) if other.is_empty() => Some(shape),
+                        (Some(_shape), Some(other)) => Some(other),
+                        (Some(shape), None) if !shape.is_empty() => Some(shape),
+                        (None, Some(shape)) if !shape.is_empty() => Some(shape),
+                        (None, None) => None,
+                        _ => None,
+                    };
+                    if let Some(output_shape) = output_shape {
+                        value_shapes.insert(out.to_string(), output_shape.clone());
+                        value_shapes.insert(sanitize_identifier(out), output_shape);
+                    }
+                }
+            }
+            if onnx_node.op_type.as_str() == "Slice" {
+                if let (Some(data_input), Some(out)) = (
+                    onnx_node.input.as_slice().first(),
+                    onnx_node.output.as_slice().first(),
+                ) {
+                    let shape_lookup = |name: &str, shapes: &HashMap<String, Vec<i64>>| {
+                        shapes
+                            .get(name)
+                            .or_else(|| shapes.get(&sanitize_identifier(name)))
+                            .or_else(|| shapes.get(name.trim_start_matches('/')))
+                            .cloned()
+                    };
+                    let values_lookup = |name: &str, values: &HashMap<String, Vec<i64>>| {
+                        values
+                            .get(name)
+                            .or_else(|| values.get(&sanitize_identifier(name)))
+                            .or_else(|| values.get(name.trim_start_matches('/')))
+                            .cloned()
+                    };
+                    if let Some(input_shape) = shape_lookup(data_input.as_str(), &value_shapes) {
+                        let starts = onnx_node
+                            .input
+                            .as_slice()
+                            .get(1)
+                            .and_then(|n| values_lookup(n.as_str(), &const_values));
+                        let ends = onnx_node
+                            .input
+                            .as_slice()
+                            .get(2)
+                            .and_then(|n| values_lookup(n.as_str(), &const_values));
+                        if let (Some(starts), Some(ends)) = (starts, ends) {
+                            let axes = onnx_node
+                                .input
+                                .as_slice()
+                                .get(3)
+                                .and_then(|n| values_lookup(n.as_str(), &const_values))
+                                .unwrap_or_else(|| {
+                                    (0..input_shape.len()).map(|i| i as i64).collect()
+                                });
+                            let steps = onnx_node
+                                .input
+                                .as_slice()
+                                .get(4)
+                                .and_then(|n| values_lookup(n.as_str(), &const_values))
+                                .unwrap_or_else(|| vec![1; axes.len()]);
+                            if starts.len() == ends.len()
+                                && starts.len() == axes.len()
+                                && starts.len() == steps.len()
+                            {
+                                let mut output_shape = input_shape.clone();
+                                let mut ok = true;
+                                for i in 0..axes.len() {
+                                    let axis = if axes[i] < 0 {
+                                        (input_shape.len() as i64 + axes[i]) as usize
+                                    } else {
+                                        axes[i] as usize
+                                    };
+                                    if axis >= output_shape.len() || steps[i] != 1 {
+                                        ok = false;
+                                        break;
+                                    }
+                                    let dim = input_shape[axis];
+                                    let mut start = starts[i];
+                                    let mut end = ends[i];
+                                    if start < 0 {
+                                        start += dim;
+                                    }
+                                    if end < 0 {
+                                        end += dim;
+                                    }
+                                    start = start.clamp(0, dim);
+                                    end = end.clamp(0, dim);
+                                    output_shape[axis] = (end - start).max(0);
+                                }
+                                if ok {
+                                    value_shapes.insert(out.to_string(), output_shape.clone());
+                                    value_shapes.insert(sanitize_identifier(out), output_shape);
+                                }
+                            }
+                        } else {
+                            value_shapes.insert(out.to_string(), input_shape.clone());
+                            value_shapes.insert(sanitize_identifier(out), input_shape);
+                        }
+                    }
+                }
+            }
+
             // Track output shapes after conversion to prevent shape inflation
             // Use .insert() to force correct shapes (not .or_insert() which preserves old shapes)
-            if let Some(inferred_shape) =
-                crate::onnx::shape_inference::infer_node_output_shape(
+            let mut shape_recorded = false;
+            if onnx_node.op_type.as_str() == "Reshape" {
+                if let (Some(shape_input), Some(output_name)) = (
+                    onnx_node.input.as_slice().get(1),
+                    onnx_node.output.as_slice().first(),
+                ) {
+                    if let Some(shape_dims) = crate::onnx::shape_inference::value_shape_dims_for(
+                        shape_input.as_str(),
+                        &value_shape_dims,
+                    ) {
+                        let inferred_shape: Vec<i64> = shape_dims
+                            .iter()
+                            .map(|d| match d {
+                                Dimension::Static(v) => i64::from(*v),
+                                Dimension::Dynamic(d) => i64::from(d.max_size),
+                            })
+                            .collect();
+                        if !inferred_shape.is_empty() {
+                            value_shapes.insert(output_name.to_string(), inferred_shape.clone());
+                            value_shapes.insert(sanitize_identifier(output_name), inferred_shape);
+                            shape_recorded = true;
+                        }
+                    }
+                }
+            }
+            if !shape_recorded {
+                if let Some(inferred_shape) = crate::onnx::shape_inference::infer_node_output_shape(
                     onnx_node,
                     &value_shapes,
                     &initializers_map,
                     &const_values,
-                )
-            {
-                for output_name in onnx_node.output.as_slice() {
-                    // Insert shape for both raw and sanitized names
-                    value_shapes.insert(output_name.to_string(), inferred_shape.clone());
-                    value_shapes.insert(sanitize_identifier(output_name), inferred_shape.clone());
+                ) {
+                    for output_name in onnx_node.output.as_slice() {
+                        // Insert shape for both raw and sanitized names
+                        value_shapes.insert(output_name.to_string(), inferred_shape.clone());
+                        value_shapes
+                            .insert(sanitize_identifier(output_name), inferred_shape.clone());
+                    }
                 }
             }
-
         }
 
         Ok(())
@@ -998,6 +1789,11 @@ pub fn convert_onnx<P: AsRef<Path>>(
     // Parse protobuf
     let mut model: ModelProto =
         ModelProto::decode(&onnx_bytes[..]).map_err(|e| OnnxError::ProtobufError(e.to_string()))?;
+    if options.external_data_dir.is_none() {
+        if let Some(parent) = onnx_path_ref.parent() {
+            options.external_data_dir = Some(parent.to_path_buf());
+        }
+    }
 
     // Apply constant folding if optimize flag is set
     if options.optimize {
@@ -1036,6 +1832,14 @@ pub fn convert_onnx<P: AsRef<Path>>(
     convert_model(model, &options)
 }
 
+/// Lower an in-memory ONNX [`ModelProto`] to [`MLGraphBuilder`] and validate with ORT `build()`.
+pub fn convert_model_proto(
+    model: ModelProto,
+    options: &ConvertOptions,
+) -> Result<ValidatedGraph<'static>, OnnxError> {
+    convert_model(model, options)
+}
+
 /// Lower ONNX to [`MLGraphBuilder`] and validate with ORT `build()`.
 pub(crate) fn convert_model(
     model: ModelProto,
@@ -1044,11 +1848,8 @@ pub(crate) fn convert_model(
     let converter = OnnxConverter::new(model.clone())?;
     converter.extract_metadata()?;
 
-    let mut context = MLContext::create(&MLContextOptions::new(
-        MLPowerPreference::Default,
-        false,
-    ))
-    .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
+    let mut context = MLContext::create(&MLContextOptions::new(MLPowerPreference::Default, false))
+        .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
 
     let mut ml_builder = MLGraphBuilder::new(&mut context).map_err(map_rustnn_error)?;
     let mut onnx_builder = OnnxBuilder::new(&mut ml_builder);
@@ -1192,6 +1993,51 @@ mod tests {
         // Verify MIN value
         let min_bytes: [u8; 8] = bytes[8..16].try_into().unwrap();
         assert_eq!(i64::from_le_bytes(min_bytes), i64::MIN);
+    }
+
+    #[test]
+    fn test_collects_all_unsupported_ops() {
+        use crate::protos::onnx::{GraphProto, ModelProto, NodeProto, OperatorSetIdProto};
+
+        let model = ModelProto {
+            opset_import: vec![OperatorSetIdProto {
+                version: 17,
+                ..Default::default()
+            }],
+            graph: Some(GraphProto {
+                node: vec![
+                    NodeProto {
+                        op_type: "If".to_string(),
+                        name: "if_node".to_string(),
+                        ..Default::default()
+                    },
+                    NodeProto {
+                        op_type: "Loop".to_string(),
+                        name: "loop_node".to_string(),
+                        ..Default::default()
+                    },
+                    NodeProto {
+                        op_type: "Add".to_string(),
+                        name: "add_node".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let err = match convert_model_proto(model, &ConvertOptions::default()) {
+            Err(err) => err,
+            Ok(_) => panic!("expected unsupported ops error"),
+        };
+        assert!(err.is_unsupported_op());
+        let ops = err.unsupported_ops().expect("unsupported ops payload");
+        assert_eq!(ops.len(), 2);
+        assert_eq!(ops[0].op, "If");
+        assert_eq!(ops[0].node, "if_node");
+        assert_eq!(ops[1].op, "Loop");
+        assert_eq!(ops[1].node, "loop_node");
     }
 
     #[test]

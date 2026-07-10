@@ -24,6 +24,9 @@ pub mod constant_folding;
 pub mod convert;
 pub mod ops;
 pub mod shape_inference;
+pub mod test_models;
 
 pub use builder::OnnxBuilder;
-pub use convert::{convert_onnx, ConvertOptions, OnnxError, ValidatedGraph};
+pub use convert::{
+    convert_model_proto, convert_onnx, ConvertOptions, OnnxError, ValidatedGraph,
+};

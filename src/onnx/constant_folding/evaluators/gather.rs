@@ -51,10 +51,10 @@ impl GatherEvaluator {
 
         // For now, only support axis=0 which is the most common case for shape operations
         if normalized_axis != 0 {
-            return Err(OnnxError::UnsupportedOp {
-                op: "Gather".to_string(),
-                node: format!("axis={} (only axis=0 is currently supported)", axis),
-            });
+            return Err(OnnxError::unsupported_op(
+                "Gather",
+                format!("axis={} (only axis=0 is currently supported)", axis),
+            ));
         }
 
         // For axis=0, we're selecting entire slices along the first dimension
@@ -169,10 +169,10 @@ impl GatherEvaluator {
 
                 Ok((TensorData::Float32(gathered), output_shape))
             }
-            _ => Err(OnnxError::UnsupportedOp {
-                op: "Gather".to_string(),
-                node: format!("data type {:?} not supported", data.data_type()),
-            }),
+            _ => Err(OnnxError::unsupported_op(
+                "Gather",
+                format!("data type {:?} not supported", data.data_type()),
+            )),
         }
     }
 

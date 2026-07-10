@@ -16,13 +16,17 @@
  * limitations under the License.
  */
 
-// Activation and unary math operators: Relu, Gelu, Tanh, Sigmoid, Sqrt, Exp, Log, Abs, Neg, Erf
+// Activation and unary math operators. Plain unary ops (Relu, Sqrt, Floor, …) plus parametric
+// activations (Elu, LeakyRelu, HardSigmoid), Clip → clamp, and PRelu (binary).
 
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
-use crate::protos::onnx::NodeProto;
+use crate::protos::onnx::{NodeProto, TensorProto, TensorProto_DataType};
 use rustnn::mlcontext::MLOperand;
+use rustnn::operator_options::{
+    MLClampOptions, MLEluOptions, MLHardSigmoidOptions, MLLeakyReluOptions,
+};
 
 pub struct ActivationHandler;
 
@@ -43,6 +47,22 @@ impl OpHandler for ActivationHandler {
                 | "Cos"
                 | "Sin"
                 | "Identity"
+                // Unary math (no attributes)
+                | "Floor"
+                | "Ceil"
+                | "Sign"
+                | "Tan"
+                | "Reciprocal"
+                | "Round"
+                | "HardSwish"
+                | "Softplus"
+                | "Softsign"
+                // Parametric activations
+                | "Elu"
+                | "LeakyRelu"
+                | "HardSigmoid"
+                | "Clip"
+                | "PRelu"
         )
     }
 
@@ -59,6 +79,15 @@ impl OpHandler for ActivationHandler {
             "unnamed".to_string()
         };
 
+        match op_type {
+            "Clip" => return self.convert_clip(node, &node_name, context, b),
+            "PRelu" => return self.convert_prelu(node, &node_name, b),
+            "Elu" | "LeakyRelu" | "HardSigmoid" => {
+                return self.convert_parametric(node, &node_name, op_type, b)
+            }
+            _ => {}
+        }
+
         let webnn_op = match op_type {
             "Relu" => "relu",
             "Gelu" => "gelu",
@@ -73,11 +102,17 @@ impl OpHandler for ActivationHandler {
             "Cos" => "cos",
             "Sin" => "sin",
             "Identity" => "identity",
+            "Floor" => "floor",
+            "Ceil" => "ceil",
+            "Sign" => "sign",
+            "Tan" => "tan",
+            "Reciprocal" => "reciprocal",
+            "Round" => "round_even",
+            "HardSwish" => "hard_swish",
+            "Softplus" => "softplus",
+            "Softsign" => "softsign",
             _ => {
-                return Err(OnnxError::UnsupportedOp {
-                    op: op_type.to_string(),
-                    node: node_name,
-                })
+                return Err(OnnxError::unsupported_op(op_type.to_string(), node_name,))
             }
         };
 
@@ -103,24 +138,216 @@ impl ActivationHandler {
             )));
         }
 
-        let output_name = if node.output.as_slice().is_empty() {
-            format!("{}_output", node_name)
-        } else {
-            sanitize_identifier(&node.output.as_slice()[0].to_string())
-        };
-
+        let output_name = output_name_for(node, node_name);
         let input0 = b.resolve_operand(&inputs[0])?;
         let opts = OnnxBuilder::labeled_options(&output_name);
         let out = emit_unary(webnn_op, b, input0, opts, node_name)?;
-
-        if let Some(output) = node.output.as_slice().first() {
-            b.record_operand(&[output.as_str(), &output_name], out);
-        } else {
-            b.record_operand(&[&output_name], out);
-        }
-
+        record_output(b, node, &output_name, out);
         Ok(ConversionResult::default())
     }
+
+    /// Parametric single-input activations: Elu, LeakyRelu, HardSigmoid.
+    fn convert_parametric(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        op_type: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidShape(format!(
+                "{} expects 1 input, got {}",
+                op_type,
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let label = output_name.clone();
+        let input0 = b.resolve_operand(&inputs[0])?;
+
+        let out = match op_type {
+            "Elu" => {
+                let alpha = attr_f64(node, "alpha").unwrap_or(1.0);
+                b.builder
+                    .elu_with_options(input0, MLEluOptions { label, alpha })
+                    .map_err(map_op_error)?
+            }
+            "LeakyRelu" => {
+                let alpha = attr_f64(node, "alpha").unwrap_or(0.01);
+                b.builder
+                    .leaky_relu_with_options(input0, MLLeakyReluOptions { label, alpha })
+                    .map_err(map_op_error)?
+            }
+            "HardSigmoid" => {
+                let alpha = attr_f64(node, "alpha").unwrap_or(0.2);
+                let beta = attr_f64(node, "beta").unwrap_or(0.5);
+                b.builder
+                    .hard_sigmoid_with_options(
+                        input0,
+                        MLHardSigmoidOptions { label, alpha, beta },
+                    )
+                    .map_err(map_op_error)?
+            }
+            _ => {
+                return Err(OnnxError::unsupported_op(
+                    op_type.to_string(),
+                    node_name.to_string(),
+                ))
+            }
+        };
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// PRelu is binary: `prelu(input, slope)` with unidirectional slope broadcast.
+    fn convert_prelu(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() != 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "PRelu expects 2 inputs (input, slope), got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+        let slope = b.resolve_operand(&inputs[1])?;
+        let opts = OnnxBuilder::labeled_options(&output_name);
+        let out = b
+            .builder
+            .prelu_with_options(input0, slope, opts)
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+
+    /// Clip → `clamp`. Bounds come from `min`/`max` attributes (opset 6) or optional constant
+    /// inputs (opset 11+). Non-constant bound inputs are rejected as unsupported.
+    fn convert_clip(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.is_empty() {
+            return Err(OnnxError::InvalidShape(
+                "Clip expects at least 1 input".to_string(),
+            ));
+        }
+
+        let output_name = output_name_for(node, node_name);
+        let input0 = b.resolve_operand(&inputs[0])?;
+
+        let mut min_value = attr_f64(node, "min");
+        let mut max_value = attr_f64(node, "max");
+
+        // Opset 11+: min/max are optional inputs (an empty name means "not provided").
+        if inputs.len() >= 2 && !inputs[1].is_empty() {
+            min_value = Some(clip_bound(context, &inputs[1], "min")?);
+        }
+        if inputs.len() >= 3 && !inputs[2].is_empty() {
+            max_value = Some(clip_bound(context, &inputs[2], "max")?);
+        }
+
+        let opts = MLClampOptions {
+            label: output_name.clone(),
+            min_value: min_value.map(|v| serde_json::json!(v)),
+            max_value: max_value.map(|v| serde_json::json!(v)),
+        };
+        let out = b
+            .builder
+            .clamp_with_options(input0, opts)
+            .map_err(map_op_error)?;
+
+        record_output(b, node, &output_name, out);
+        Ok(ConversionResult::default())
+    }
+}
+
+fn output_name_for(node: &NodeProto, node_name: &str) -> String {
+    if node.output.as_slice().is_empty() {
+        format!("{}_output", node_name)
+    } else {
+        sanitize_identifier(&node.output.as_slice()[0].to_string())
+    }
+}
+
+fn record_output(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    node: &NodeProto,
+    output_name: &str,
+    out: MLOperand,
+) {
+    if let Some(output) = node.output.as_slice().first() {
+        b.record_operand(&[output.as_str(), output_name], out);
+    } else {
+        b.record_operand(&[output_name], out);
+    }
+}
+
+fn attr_f64(node: &NodeProto, name: &str) -> Option<f64> {
+    node.attribute
+        .as_slice()
+        .iter()
+        .find(|a| a.name == name)
+        .map(|a| a.f as f64)
+}
+
+/// Read a scalar Clip bound from a constant initializer. Rejects non-constant bound inputs.
+fn clip_bound(
+    context: &ConversionContext,
+    name: &str,
+    which: &str,
+) -> Result<f64, OnnxError> {
+    let sanitized = sanitize_identifier(name);
+    let tensor = context
+        .initializers
+        .get(name)
+        .or_else(|| context.initializers.get(sanitized.as_str()))
+        .ok_or_else(|| {
+            OnnxError::unsupported_op(
+                format!("Clip with non-constant {which} bound '{name}'"),
+                name.to_string(),
+            )
+        })?;
+
+    scalar_from_tensor(tensor).ok_or_else(|| {
+        OnnxError::InvalidShape(format!("Clip {which} bound '{name}' is not a scalar"))
+    })
+}
+
+fn scalar_from_tensor(tensor: &TensorProto) -> Option<f64> {
+    if let Some(v) = tensor.float_data.first() {
+        return Some(*v as f64);
+    }
+    if let Some(v) = tensor.double_data.first() {
+        return Some(*v);
+    }
+    if !tensor.raw_data.is_empty() {
+        return match tensor.data_type {
+            x if x == TensorProto_DataType::Float as i32 => tensor
+                .raw_data
+                .get(0..4)
+                .map(|b| f32::from_le_bytes(b.try_into().unwrap()) as f64),
+            x if x == TensorProto_DataType::Double as i32 => tensor
+                .raw_data
+                .get(0..8)
+                .map(|b| f64::from_le_bytes(b.try_into().unwrap())),
+            _ => None,
+        };
+    }
+    None
 }
 
 fn emit_unary(
@@ -150,11 +377,32 @@ fn emit_unary(
             .builder
             .identity_with_options(input, opts)
             .map_err(map_op_error)?,
+        "floor" => b.builder.floor_with_options(input, opts).map_err(map_op_error)?,
+        "ceil" => b.builder.ceil_with_options(input, opts).map_err(map_op_error)?,
+        "sign" => b.builder.sign_with_options(input, opts).map_err(map_op_error)?,
+        "tan" => b.builder.tan_with_options(input, opts).map_err(map_op_error)?,
+        "reciprocal" => b
+            .builder
+            .reciprocal_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "round_even" => b
+            .builder
+            .round_even_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "hard_swish" => b
+            .builder
+            .hard_swish_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "softplus" => b
+            .builder
+            .softplus_with_options(input, opts)
+            .map_err(map_op_error)?,
+        "softsign" => b
+            .builder
+            .softsign_with_options(input, opts)
+            .map_err(map_op_error)?,
         _ => {
-            return Err(OnnxError::UnsupportedOp {
-                op: webnn_op.to_string(),
-                node: node_name.to_string(),
-            })
+            return Err(OnnxError::unsupported_op(webnn_op.to_string(), node_name.to_string(),))
         }
     })
 }
@@ -189,7 +437,44 @@ mod tests {
         assert!(handler.supports("Erf"));
         assert!(handler.supports("Cos"));
         assert!(handler.supports("Sin"));
+        // Unary math added as quick wins.
+        assert!(handler.supports("Floor"));
+        assert!(handler.supports("Ceil"));
+        assert!(handler.supports("Sign"));
+        assert!(handler.supports("Tan"));
+        assert!(handler.supports("Reciprocal"));
+        assert!(handler.supports("Round"));
+        assert!(handler.supports("HardSwish"));
+        assert!(handler.supports("Softplus"));
+        assert!(handler.supports("Softsign"));
+        // Parametric activations.
+        assert!(handler.supports("Elu"));
+        assert!(handler.supports("LeakyRelu"));
+        assert!(handler.supports("HardSigmoid"));
+        assert!(handler.supports("Clip"));
+        assert!(handler.supports("PRelu"));
         assert!(!handler.supports("Add"));
+    }
+
+    #[test]
+    fn test_convert_floor() {
+        let handler = ActivationHandler;
+        let node = create_test_node("Floor", vec!["x"], vec!["y"]);
+        crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
+    }
+
+    #[test]
+    fn test_convert_elu() {
+        let handler = ActivationHandler;
+        let node = create_test_node("Elu", vec!["x"], vec!["y"]);
+        crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
+    }
+
+    #[test]
+    fn test_convert_clip_unbounded() {
+        let handler = ActivationHandler;
+        let node = create_test_node("Clip", vec!["x"], vec!["y"]);
+        crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
     }
 
     #[test]

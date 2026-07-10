@@ -21,6 +21,8 @@ pub struct OnnxBuilder<'a, 'ctx, 'bld> {
     operands: HashMap<String, MLOperand>,
     /// Operand ids registered via `input()` — cannot be passed directly to `build()`.
     input_operands: HashSet<u32>,
+    /// Operand ids registered via `constant()` — cannot be passed directly to `build()`.
+    constant_operands: HashSet<u32>,
     /// Sanitized + raw ONNX names registered as graph inputs.
     input_names: HashSet<String>,
 }
@@ -42,6 +44,7 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
             builder,
             operands: HashMap::new(),
             input_operands: HashSet::new(),
+            constant_operands: HashSet::new(),
             input_names: HashSet::new(),
         }
     }
@@ -99,25 +102,31 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
 
     /// Resolve an ONNX graph output for `build()`.
     ///
-    /// MLGraphBuilder rejects using an input operand directly as a graph output; insert
-    /// `identity` when the value is still the original graph input (e.g. no-op ONNX graphs).
+    /// WebNN rejects graph outputs that are still inputs or constants (see § 8.9.4 `build()`).
+    /// Insert `identity` only for those cases; regular op outputs already have graph-safe names.
     pub fn output_operand(&mut self, name: &str) -> Result<MLOperand, OnnxError> {
         let op = self.resolve_operand(name)?;
-        if self.input_operands.contains(&operand_index(op)) {
-            let label = format!("{}__output", Self::webnn_id(name));
-            let opts = Self::labeled_options(&label);
-            return Ok(self
-                .builder
-                .identity_with_options(op, opts)
-                .map_err(map_op_error)?);
+        let idx = operand_index(op);
+        if !self.input_operands.contains(&idx) && !self.constant_operands.contains(&idx) {
+            return Ok(op);
         }
-        Ok(op)
+        let label = format!("{}__graph_out", Self::webnn_id(name));
+        let opts = Self::labeled_options(&label);
+        Ok(self
+            .builder
+            .identity_with_options(op, opts)
+            .map_err(map_op_error)?)
     }
 
     /// Build-time output key; disambiguate when ONNX reuses an input name as output.
     pub fn build_output_key(&self, output_name: &str) -> String {
+        Self::output_key_for(output_name, &self.input_names)
+    }
+
+    /// WebNN graph output key for an ONNX output name (used by tests).
+    pub fn output_key_for(output_name: &str, input_names: &HashSet<String>) -> String {
         let sanitized = Self::webnn_id(output_name);
-        if self.input_names.contains(&sanitized) || self.input_names.contains(output_name) {
+        if input_names.contains(&sanitized) || input_names.contains(output_name) {
             format!("{sanitized}__output")
         } else {
             sanitized
@@ -169,6 +178,7 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
             }
         }
         .map_err(map_rustnn_error)?;
+        self.constant_operands.insert(operand_index(op));
         self.record_operand(&[name, &id], op);
         Ok(())
     }

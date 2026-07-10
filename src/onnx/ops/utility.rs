@@ -28,6 +28,7 @@ use crate::onnx::ops::{
     normalize_axis_best_effort, ConversionContext, ConversionResult, OpHandler,
 };
 use crate::protos::onnx::NodeProto;
+use half::f16;
 use rustnn::operator_options::{
     MLDimension, MLDynamicDimension, MLGatherOptions, MLReverseOptions, MLTriangularOptions,
 };
@@ -122,6 +123,16 @@ impl UtilityHandler {
                     return Some(f64::from(f32::from_bits(bits)));
                 }
             }
+            if t.data_type == TensorProto_DataType::Float16 as i32 {
+                if !t.int32_data.is_empty() {
+                    return Some(f64::from(f16::from_bits(t.int32_data[0] as u16).to_f32()));
+                }
+                let raw = t.raw_data.as_slice();
+                if raw.len() >= 2 {
+                    let bits = u16::from_le_bytes([raw[0], raw[1]]);
+                    return Some(f64::from(f16::from_bits(bits).to_f32()));
+                }
+            }
             if t.data_type == TensorProto_DataType::Double as i32 {
                 if !t.double_data.is_empty() {
                     return Some(t.double_data[0]);
@@ -141,23 +152,27 @@ impl UtilityHandler {
 
     /// Element type of an ONNX `Range` (all three inputs share type `T`).
     ///
-    /// Returns `Float32` for float/double/float16 inputs, otherwise `Int64`. `float64`/`float16`
-    /// range values are materialized as `float32` constants (WebNN has no `range` op; the range is
-    /// emitted as a constant tensor).
+    /// Returns the ONNX `Range` element type. `float64` is materialized as `float32`; `float16`
+    /// stays float16.
     fn range_element_type(&self, inputs: &[String], context: &ConversionContext) -> DataType {
         use crate::protos::onnx::TensorProto_DataType;
         for name in inputs.iter().take(3) {
             if let Some(t) = context.initializers.get(name.as_str()) {
                 let dt = t.data_type;
+                if dt == TensorProto_DataType::Float16 as i32 {
+                    return DataType::Float16;
+                }
                 if dt == TensorProto_DataType::Float as i32
                     || dt == TensorProto_DataType::Double as i32
-                    || dt == TensorProto_DataType::Float16 as i32
                 {
                     return DataType::Float32;
                 }
             }
             if let Some(dt) = context.value_types.get(name.as_str()) {
-                if matches!(dt, DataType::Float32 | DataType::Float16) {
+                if matches!(dt, DataType::Float16) {
+                    return DataType::Float16;
+                }
+                if matches!(dt, DataType::Float32) {
                     return DataType::Float32;
                 }
             }
@@ -215,10 +230,18 @@ impl UtilityHandler {
             sanitize_identifier(&node.output.as_slice()[0].to_string())
         };
 
-        // Float ranges materialize a float32 constant. The dynamic (symbolic-dim) path below is
+        // Float ranges materialize a constant. The dynamic (symbolic-dim) path below is
         // integer-only — it exists to express runtime shape dimensions, which are always integral.
-        if self.range_element_type(inputs, context) == DataType::Float32 {
-            return self.convert_range_static_float(node, node_name, &output_name, context, b);
+        let range_dtype = self.range_element_type(inputs, context);
+        if matches!(range_dtype, DataType::Float32 | DataType::Float16) {
+            return self.convert_range_static_float(
+                node,
+                node_name,
+                &output_name,
+                range_dtype,
+                context,
+                b,
+            );
         }
 
         let start = self.scalar_as_i64(&inputs[0], context);
@@ -380,6 +403,7 @@ impl UtilityHandler {
         node: &NodeProto,
         node_name: &str,
         output_name: &str,
+        dtype: DataType,
         context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
@@ -422,22 +446,21 @@ impl UtilityHandler {
             values.push(0.0);
         }
 
-        let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
-        b.register_constant_from_bytes(
-            output_name,
-            DataType::Float32,
-            &[values.len() as u32],
-            &bytes,
-        )?;
+        let bytes: Vec<u8> = match dtype {
+            DataType::Float16 => values
+                .iter()
+                .flat_map(|v| f16::from_f32(*v).to_bits().to_le_bytes())
+                .collect(),
+            _ => values.iter().flat_map(|v| v.to_le_bytes()).collect(),
+        };
+        b.register_constant_from_bytes(output_name, dtype, &[values.len() as u32], &bytes)?;
         if let Some(out) = node.output.as_slice().first() {
             record_node_output(b, out, output_name, b.resolve_operand(output_name)?);
         }
 
         let mut result = ConversionResult::default();
         if let Some(out) = node.output.as_slice().first() {
-            result
-                .output_types
-                .insert(out.to_string(), DataType::Float32);
+            result.output_types.insert(out.to_string(), dtype);
         }
         Ok(result)
     }
@@ -581,6 +604,19 @@ impl UtilityHandler {
                                 fill_value_i64 = 0f32.to_bits() as i64;
                             }
                         }
+                        x if x == crate::protos::onnx::TensorProto_DataType::Float16 as i32 => {
+                            dtype = DataType::Float16;
+                            if !t.int32_data.as_slice().is_empty() {
+                                fill_value_i64 = t.int32_data.as_slice()[0] as i64;
+                            } else if !t.raw_data.as_slice().is_empty()
+                                && t.raw_data.as_slice().len() >= 2
+                            {
+                                let raw = &t.raw_data.as_slice()[..2];
+                                fill_value_i64 = u16::from_le_bytes([raw[0], raw[1]]) as i64;
+                            } else {
+                                fill_value_i64 = f16::from_f32(0.0).to_bits() as i64;
+                            }
+                        }
                         // INT64
                         x if x == crate::protos::onnx::TensorProto_DataType::Int64 as i32 => {
                             dtype = DataType::Int64;
@@ -610,6 +646,7 @@ impl UtilityHandler {
                     let f = f32::from_bits(fill_value_i64 as u32);
                     f.to_le_bytes().to_vec()
                 }
+                DataType::Float16 => (fill_value_i64 as u16).to_le_bytes().to_vec(),
                 _ => fill_value_i64.to_le_bytes().to_vec(),
             };
             let scalar_name = format!("{}_fill", output_name);
@@ -644,6 +681,10 @@ impl UtilityHandler {
             DataType::Float32 => {
                 let f = f32::from_bits(fill_value_i64 as u32);
                 let val = f.to_le_bytes();
+                val.repeat(numel)
+            }
+            DataType::Float16 => {
+                let val = (fill_value_i64 as u16).to_le_bytes();
                 val.repeat(numel)
             }
             _ => {

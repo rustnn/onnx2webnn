@@ -638,6 +638,10 @@ def _build_generic(
     node.attribute.extend(
         _build_attrs(schema, op_type, data_rank=data_rank, input_shape=input_shape)
     )
+    if op_type == "Cast" and input_elem_type == TensorProto.FLOAT16:
+        for attr in node.attribute:
+            if attr.name == "to":
+                attr.i = TensorProto.FLOAT16
 
     graph = helper.make_graph(
         [node],
@@ -753,6 +757,10 @@ def _convert_float_fixture_to_float16(model: ModelProto, op_type: str, opset: in
         if initializer.name in eligible and initializer.data_type == TensorProto.FLOAT:
             _to_float16_tensor(initializer)
     for node in graph.node:
+        if op_type == "Cast":
+            for attr in node.attribute:
+                if attr.name == "to":
+                    attr.i = TensorProto.FLOAT16
         if any(name in eligible for name in node.output):
             for attr in node.attribute:
                 if attr.HasField("t") and attr.t.data_type == TensorProto.FLOAT:

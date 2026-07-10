@@ -16,6 +16,7 @@ use crate::onnx::ops::{
     normalize_axis_best_effort, ConversionContext, ConversionResult, OpHandler,
 };
 use crate::protos::onnx::NodeProto;
+use half::f16;
 use rustnn::mlcontext::MLOperand;
 use rustnn::operator_options::{
     MLArgMinMaxOptions, MLBatchNormalizationOptions, MLInstanceNormalizationOptions,
@@ -372,7 +373,13 @@ impl NormalizationHandler {
             )
             .map_err(map_op_error)?;
 
-        let eps_op = register_f32_scalar(b, &format!("{output_name}__gn_eps"), epsilon as f32)?;
+        let input_dtype = resolve_value_type(context, &inputs[0]).unwrap_or(DataType::Float32);
+        let eps_op = register_scalar_like(
+            b,
+            &format!("{output_name}__gn_eps"),
+            epsilon as f32,
+            input_dtype,
+        )?;
         let var_eps_label = format!("{output_name}__gn_var_eps");
         let var_eps = b
             .builder
@@ -479,7 +486,13 @@ impl NormalizationHandler {
             )
             .map_err(map_op_error)?;
 
-        let eps_op = register_f32_scalar(b, &format!("{output_name}__rms_eps"), epsilon as f32)?;
+        let input_dtype = resolve_value_type(context, &inputs[0]).unwrap_or(DataType::Float32);
+        let eps_op = register_scalar_like(
+            b,
+            &format!("{output_name}__rms_eps"),
+            epsilon as f32,
+            input_dtype,
+        )?;
         let mean_eps_label = format!("{output_name}__rms_mean_eps");
         let mean_eps = b
             .builder
@@ -709,6 +722,31 @@ fn register_f32_scalar(
 ) -> Result<MLOperand, OnnxError> {
     b.register_constant_from_bytes(name, DataType::Float32, &[1], &value.to_le_bytes())?;
     b.resolve_operand(name)
+}
+
+fn register_scalar_like(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    name: &str,
+    value: f32,
+    data_type: DataType,
+) -> Result<MLOperand, OnnxError> {
+    match data_type {
+        DataType::Float16 => {
+            let bits = f16::from_f32(value).to_bits();
+            b.register_constant_from_bytes(name, DataType::Float16, &[1], &bits.to_le_bytes())?;
+            b.resolve_operand(name)
+        }
+        _ => register_f32_scalar(b, name, value),
+    }
+}
+
+fn resolve_value_type(context: &ConversionContext, name: &str) -> Option<DataType> {
+    let sanitized = crate::onnx::convert::sanitize_identifier(name);
+    context
+        .value_types
+        .get(name)
+        .or_else(|| context.value_types.get(&sanitized))
+        .copied()
 }
 
 fn axis_position_indices(

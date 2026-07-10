@@ -5,7 +5,7 @@
 
 // Recurrent operators: GRU, LSTM
 
-use crate::onnx::builder::{map_op_error, operand_index, OnnxBuilder};
+use crate::onnx::builder::{map_ast_data_type, map_op_error, operand_index, OnnxBuilder};
 use crate::onnx::builder_helpers::{
     map_op_result, output_label, record_node_output, slice_with_params,
 };
@@ -16,6 +16,7 @@ use rustnn::mlcontext::MLOperand;
 use rustnn::operator_options::{
     MLDimension, MLGruOptions, MLLstmOptions, MLSqueezeOptions, MLUnsqueezeOptions,
 };
+use rustnn::DataType;
 
 pub struct RnnHandler;
 
@@ -66,10 +67,30 @@ impl RnnHandler {
 
         let hidden_size = require_hidden_size(node, "GRU")?;
         let gate_bias_len = 3u32 * hidden_size;
+        let input_dtype = rnn_input_dtype(context, &inputs[0]);
+        let compute_f32 = input_dtype == DataType::Float16;
 
-        let x = b.resolve_operand(&inputs[0])?;
-        let w = b.resolve_operand(&inputs[1])?;
-        let r = b.resolve_operand(&inputs[2])?;
+        let x = maybe_cast_for_rnn(
+            b,
+            b.resolve_operand(&inputs[0])?,
+            compute_f32,
+            DataType::Float32,
+            &format!("{node_name}_x_f32"),
+        )?;
+        let w = maybe_cast_for_rnn(
+            b,
+            b.resolve_operand(&inputs[1])?,
+            compute_f32,
+            DataType::Float32,
+            &format!("{node_name}_w_f32"),
+        )?;
+        let r = maybe_cast_for_rnn(
+            b,
+            b.resolve_operand(&inputs[2])?,
+            compute_f32,
+            DataType::Float32,
+            &format!("{node_name}_r_f32"),
+        )?;
         let steps = resolve_steps(context, &inputs[0]);
 
         let (bias, recurrent_bias) = split_combined_bias(
@@ -77,6 +98,7 @@ impl RnnHandler {
             node_name,
             inputs.get(3).map(String::as_str),
             gate_bias_len,
+            compute_f32,
         )?;
 
         let outputs = node.output.as_slice();
@@ -107,23 +129,31 @@ impl RnnHandler {
             .map_err(map_op_error)?;
 
         let mut result = ConversionResult::default();
-        let input_dtype = context
-            .value_types
-            .get(&inputs[0])
-            .cloned()
-            .unwrap_or(rustnn::DataType::Float32);
 
         if wants_sequence {
             let seq = gru_outputs.get(1).copied().ok_or_else(|| {
                 OnnxError::InvalidShape("GRU missing sequence output".to_string())
             })?;
             let mapped = map_onnx_sequence_output(b, node_name, seq, context, &outputs[0])?;
+            let mapped = maybe_cast_for_rnn(
+                b,
+                mapped,
+                compute_f32,
+                input_dtype,
+                &format!("{label}_y_cast"),
+            )?;
             record_node_output(b, &outputs[0], &format!("{label}_y"), mapped);
             result.output_types.insert(outputs[0].clone(), input_dtype);
         }
 
         if wants_hidden {
-            let hidden = gru_outputs[0];
+            let hidden = maybe_cast_for_rnn(
+                b,
+                gru_outputs[0],
+                compute_f32,
+                input_dtype,
+                &format!("{label}_y_h_cast"),
+            )?;
             let out_name = outputs.get(1).expect("checked above");
             record_node_output(b, out_name, &format!("{label}_y_h"), hidden);
             result.output_types.insert(out_name.clone(), input_dtype);
@@ -152,10 +182,30 @@ impl RnnHandler {
 
         let hidden_size = require_hidden_size(node, "LSTM")?;
         let gate_bias_len = 4u32 * hidden_size;
+        let input_dtype = rnn_input_dtype(context, &inputs[0]);
+        let compute_f32 = input_dtype == DataType::Float16;
 
-        let x = b.resolve_operand(&inputs[0])?;
-        let w = b.resolve_operand(&inputs[1])?;
-        let r = b.resolve_operand(&inputs[2])?;
+        let x = maybe_cast_for_rnn(
+            b,
+            b.resolve_operand(&inputs[0])?,
+            compute_f32,
+            DataType::Float32,
+            &format!("{node_name}_x_f32"),
+        )?;
+        let w = maybe_cast_for_rnn(
+            b,
+            b.resolve_operand(&inputs[1])?,
+            compute_f32,
+            DataType::Float32,
+            &format!("{node_name}_w_f32"),
+        )?;
+        let r = maybe_cast_for_rnn(
+            b,
+            b.resolve_operand(&inputs[2])?,
+            compute_f32,
+            DataType::Float32,
+            &format!("{node_name}_r_f32"),
+        )?;
         let steps = resolve_steps(context, &inputs[0]);
 
         let (bias, recurrent_bias) = split_combined_bias(
@@ -163,6 +213,7 @@ impl RnnHandler {
             node_name,
             inputs.get(3).map(String::as_str),
             gate_bias_len,
+            compute_f32,
         )?;
 
         let outputs = node.output.as_slice();
@@ -186,30 +237,46 @@ impl RnnHandler {
             .map_err(map_op_error)?;
 
         let mut result = ConversionResult::default();
-        let input_dtype = context
-            .value_types
-            .get(&inputs[0])
-            .cloned()
-            .unwrap_or(rustnn::DataType::Float32);
 
         if wants_sequence {
             let seq = lstm_outputs.get(2).copied().ok_or_else(|| {
                 OnnxError::InvalidShape("LSTM missing sequence output".to_string())
             })?;
             let mapped = map_onnx_sequence_output(b, node_name, seq, context, &outputs[0])?;
+            let mapped = maybe_cast_for_rnn(
+                b,
+                mapped,
+                compute_f32,
+                input_dtype,
+                &format!("{label}_y_cast"),
+            )?;
             record_node_output(b, &outputs[0], &format!("{label}_y"), mapped);
             result.output_types.insert(outputs[0].clone(), input_dtype);
         }
 
         if wants_hidden {
+            let hidden = maybe_cast_for_rnn(
+                b,
+                lstm_outputs[0],
+                compute_f32,
+                input_dtype,
+                &format!("{label}_y_h_cast"),
+            )?;
             let out_name = outputs.get(1).expect("checked above");
-            record_node_output(b, out_name, &format!("{label}_y_h"), lstm_outputs[0]);
+            record_node_output(b, out_name, &format!("{label}_y_h"), hidden);
             result.output_types.insert(out_name.clone(), input_dtype);
         }
 
         if wants_cell {
+            let cell = maybe_cast_for_rnn(
+                b,
+                lstm_outputs[1],
+                compute_f32,
+                input_dtype,
+                &format!("{label}_y_c_cast"),
+            )?;
             let out_name = outputs.get(2).expect("checked above");
-            record_node_output(b, out_name, &format!("{label}_y_c"), lstm_outputs[1]);
+            record_node_output(b, out_name, &format!("{label}_y_c"), cell);
             result.output_types.insert(out_name.clone(), input_dtype);
         }
 
@@ -299,12 +366,20 @@ fn split_combined_bias(
     node_name: &str,
     bias_name: Option<&str>,
     gate_bias_len: u32,
+    compute_f32: bool,
 ) -> Result<(Option<u32>, Option<u32>), OnnxError> {
     let Some(name) = bias_name.filter(|n| !n.is_empty()) else {
         return Ok((None, None));
     };
 
     let combined = b.resolve_operand(name)?;
+    let combined = maybe_cast_for_rnn(
+        b,
+        combined,
+        compute_f32,
+        DataType::Float32,
+        &format!("{node_name}_bias_f32"),
+    )?;
     let half = gate_bias_len;
     let bias = slice_with_params(
         b,
@@ -366,4 +441,31 @@ fn map_onnx_sequence_output(
             Ok(squeezed)
         }
     }
+}
+
+fn rnn_input_dtype(context: &ConversionContext, input: &str) -> DataType {
+    context
+        .value_types
+        .get(input)
+        .copied()
+        .unwrap_or(DataType::Float32)
+}
+
+fn maybe_cast_for_rnn(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    operand: MLOperand,
+    should_cast: bool,
+    target_type: DataType,
+    label: &str,
+) -> Result<MLOperand, OnnxError> {
+    if !should_cast {
+        return Ok(operand);
+    }
+    b.builder
+        .cast_with_options(
+            operand,
+            map_ast_data_type(target_type)?,
+            OnnxBuilder::labeled_options(label),
+        )
+        .map_err(map_op_error)
 }

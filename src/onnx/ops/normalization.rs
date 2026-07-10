@@ -637,7 +637,7 @@ impl NormalizationHandler {
 
         let mut axis = -1i64;
         for attr in node.attribute.as_slice() {
-            if attr.name.as_str() == "axis" && attr.i != 0 {
+            if attr.name.as_str() == "axis" {
                 axis = attr.i;
             }
         }
@@ -661,12 +661,24 @@ impl NormalizationHandler {
 
         let output_name = output_label(node, node_name);
         let input = b.resolve_operand(&inputs[0])?;
+        let input_dtype = resolve_value_type(context, &inputs[0]).unwrap_or(DataType::Float32);
+        let argmax_input = if input_dtype == DataType::Float16 {
+            b.builder
+                .cast_with_options(
+                    input,
+                    map_ast_data_type(DataType::Float32)?,
+                    OnnxBuilder::labeled_options(&format!("{output_name}__argmax_input")),
+                )
+                .map_err(map_op_error)?
+        } else {
+            input
+        };
 
         let argmax_label = format!("{output_name}__argmax");
         let argmax = b
             .builder
             .arg_max_with_options(
-                input,
+                argmax_input,
                 axis as u32,
                 MLArgMinMaxOptions {
                     label: argmax_label.clone(),
@@ -699,8 +711,8 @@ impl NormalizationHandler {
             )
             .map_err(map_op_error)?;
 
-        let zero = register_f32_scalar(b, &format!("{output_name}__zero"), 0.0)?;
-        let one = register_f32_scalar(b, &format!("{output_name}__one"), 1.0)?;
+        let zero = register_scalar_like(b, &format!("{output_name}__zero"), 0.0, input_dtype)?;
+        let one = register_scalar_like(b, &format!("{output_name}__one"), 1.0, input_dtype)?;
         let out = b
             .builder
             .where_with_options(mask, one, zero, OnnxBuilder::labeled_options(&output_name))

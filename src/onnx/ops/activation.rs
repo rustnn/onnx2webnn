@@ -19,7 +19,7 @@
 // Activation and unary math operators. Plain unary ops (Relu, Sqrt, Floor, …) plus parametric
 // activations (Elu, LeakyRelu, HardSigmoid), Clip → clamp, and PRelu (binary).
 
-use crate::onnx::builder::{map_op_error, OnnxBuilder};
+use crate::onnx::builder::{map_ast_data_type, map_op_error, OnnxBuilder};
 use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
 use crate::protos::onnx::{NodeProto, TensorProto, TensorProto_DataType};
@@ -427,6 +427,12 @@ impl ActivationHandler {
                 OnnxBuilder::labeled_options(&celu_neg_label),
             )
             .map_err(map_op_error)?;
+        let celu_neg = cast_to_dtype(
+            b,
+            celu_neg,
+            input_dtype,
+            &step_label(&output_name, "celu_neg_cast"),
+        )?;
 
         let input0 = b.resolve_operand(&inputs[0])?;
         let gt_label = step_label(&output_name, "gt");
@@ -863,12 +869,15 @@ impl ActivationHandler {
                 OnnxBuilder::labeled_options(&low_label),
             )
             .map_err(map_op_error)?;
+        let low = cast_to_dtype(b, low, input_dtype, &step_label(&output_name, "low_cast"))?;
+        let high = cast_to_dtype(b, high, input_dtype, &step_label(&output_name, "high_cast"))?;
 
         let mid_label = step_label(&output_name, "mid");
         let mid = b
             .builder
             .where_with_options(lt, low, zero, OnnxBuilder::labeled_options(&mid_label))
             .map_err(map_op_error)?;
+        let mid = cast_to_dtype(b, mid, input_dtype, &step_label(&output_name, "mid_cast"))?;
         let out = b
             .builder
             .where_with_options(gt, high, mid, OnnxBuilder::labeled_options(&output_name))
@@ -904,6 +913,21 @@ fn exp_and_exp_neg(
         .exp_with_options(neg, OnnxBuilder::labeled_options(&exp_neg_label))
         .map_err(map_op_error)?;
     Ok((exp_pos, exp_neg))
+}
+
+fn cast_to_dtype(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    operand: MLOperand,
+    data_type: DataType,
+    label: &str,
+) -> Result<MLOperand, OnnxError> {
+    b.builder
+        .cast_with_options(
+            operand,
+            map_ast_data_type(data_type)?,
+            OnnxBuilder::labeled_options(label),
+        )
+        .map_err(map_op_error)
 }
 
 fn register_f32_scalar(

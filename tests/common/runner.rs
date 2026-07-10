@@ -10,7 +10,8 @@ use std::collections::{HashMap, HashSet};
 use half::f16;
 use onnx2webnn::onnx::builder::OnnxBuilder;
 use onnx2webnn::protos::onnx::{
-    type_proto, ModelProto, NodeProto, TensorProto_DataType, ValueInfoProto,
+    type_proto, AttributeProto, ModelProto, NodeProto, TensorProto, TensorProto_DataType,
+    ValueInfoProto,
 };
 use onnx2webnn::{convert_model_proto, ConvertOptions, ValidatedGraph};
 use prost::Message;
@@ -67,10 +68,16 @@ fn graph_proto(model: &ModelProto) -> &onnx2webnn::protos::onnx::GraphProto {
     model.graph.as_ref().expect("model graph")
 }
 
-/// ORT may lack kernels for some ONNX ops (e.g. Swish). Decompose them for reference runs only.
+/// ORT may lack kernels for some ONNX ops (e.g. Swish, float16 Range). Decompose for reference only.
 fn ort_reference_model(model: &ModelProto) -> ModelProto {
     let mut reference = model.clone();
     let graph = reference.graph.as_mut().expect("model graph");
+    let initializers = graph.initializer.clone();
+    let input_elem_types: HashMap<String, i32> = graph
+        .input
+        .iter()
+        .filter_map(|value| value_info_elem_type(value).map(|ty| (value.name.clone(), ty)))
+        .collect();
     let mut nodes = Vec::with_capacity(graph.node.len() + 4);
     for node in graph.node.drain(..) {
         if node.op_type == "Swish" {
@@ -91,12 +98,217 @@ fn ort_reference_model(model: &ModelProto) -> ModelProto {
                 output: vec![output],
                 ..Default::default()
             });
+        } else if let Some(folded) = try_fold_float_range(&initializers, &node) {
+            nodes.push(folded);
+        } else if let Some(wrapped) =
+            try_wrap_fp16_celu_for_ort(&initializers, &input_elem_types, &node)
+        {
+            nodes.extend(wrapped);
+        } else if let Some(wrapped) =
+            try_wrap_fp16_quantize_linear_for_ort(&initializers, &input_elem_types, &node)
+        {
+            nodes.extend(wrapped);
         } else {
             nodes.push(node);
         }
     }
     graph.node = nodes;
     reference
+}
+
+fn initializer_tensor<'a>(initializers: &'a [TensorProto], name: &str) -> Option<&'a TensorProto> {
+    initializers.iter().find(|tensor| tensor.name == name)
+}
+
+fn read_tensor_scalar_f64(tensor: &TensorProto) -> Option<f64> {
+    match tensor.data_type {
+        x if x == TensorProto_DataType::Float as i32 => {
+            if !tensor.float_data.is_empty() {
+                return Some(f64::from(tensor.float_data[0]));
+            }
+            let raw = tensor.raw_data.as_slice();
+            if raw.len() >= 4 {
+                let bits = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
+                return Some(f64::from(f32::from_bits(bits)));
+            }
+            None
+        }
+        x if x == TensorProto_DataType::Float16 as i32 => {
+            let raw = tensor.raw_data.as_slice();
+            if raw.len() >= 2 {
+                let bits = u16::from_le_bytes([raw[0], raw[1]]);
+                return Some(f64::from(f16::from_bits(bits).to_f32()));
+            }
+            None
+        }
+        x if x == TensorProto_DataType::Double as i32 => {
+            if !tensor.double_data.is_empty() {
+                return Some(tensor.double_data[0]);
+            }
+            let raw = tensor.raw_data.as_slice();
+            if raw.len() >= 8 {
+                let bits = u64::from_le_bytes([
+                    raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
+                ]);
+                return Some(f64::from_bits(bits));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn try_fold_float_range(initializers: &[TensorProto], node: &NodeProto) -> Option<NodeProto> {
+    if node.op_type != "Range" || node.input.len() != 3 {
+        return None;
+    }
+    let start_t = initializer_tensor(initializers, &node.input[0])?;
+    let limit_t = initializer_tensor(initializers, &node.input[1])?;
+    let delta_t = initializer_tensor(initializers, &node.input[2])?;
+    if start_t.data_type != TensorProto_DataType::Float16 as i32 {
+        return None;
+    }
+    let start = read_tensor_scalar_f64(start_t)?;
+    let limit = read_tensor_scalar_f64(limit_t)?;
+    let delta = read_tensor_scalar_f64(delta_t)?;
+    if delta == 0.0 {
+        return None;
+    }
+
+    let count = ((limit - start) / delta).ceil();
+    let count = if count.is_finite() && count > 0.0 {
+        count as usize
+    } else {
+        0
+    };
+    let mut values: Vec<f32> = (0..count)
+        .map(|i| (start + (i as f64) * delta) as f32)
+        .collect();
+    if values.is_empty() {
+        values.push(0.0);
+    }
+
+    let raw_data: Vec<u8> = values
+        .iter()
+        .flat_map(|value| f16::from_f32(*value).to_bits().to_le_bytes())
+        .collect();
+    let tensor = TensorProto {
+        data_type: TensorProto_DataType::Float16 as i32,
+        dims: vec![values.len() as i64],
+        raw_data,
+        ..Default::default()
+    };
+    let value_attr = AttributeProto {
+        name: "value".to_string(),
+        r#type: onnx2webnn::protos::onnx::attribute_proto::AttributeType::Tensor as i32,
+        t: Some(tensor),
+        ..Default::default()
+    };
+    let output = node.output.first()?.clone();
+    let mut folded = NodeProto {
+        op_type: "Constant".to_string(),
+        name: format!("{}__folded_range", node.name),
+        output: vec![output],
+        ..Default::default()
+    };
+    folded.attribute.push(value_attr);
+    Some(folded)
+}
+
+fn tensor_elem_type(
+    initializers: &[TensorProto],
+    input_elem_types: &HashMap<String, i32>,
+    name: &str,
+) -> Option<i32> {
+    if let Some(tensor) = initializers.iter().find(|tensor| tensor.name == name) {
+        return Some(tensor.data_type);
+    }
+    input_elem_types.get(name).copied()
+}
+
+fn cast_node(name: &str, input: &str, output: &str, to: i32) -> NodeProto {
+    NodeProto {
+        op_type: "Cast".to_string(),
+        name: name.to_string(),
+        input: vec![input.to_string()],
+        output: vec![output.to_string()],
+        attribute: vec![AttributeProto {
+            name: "to".to_string(),
+            r#type: onnx2webnn::protos::onnx::attribute_proto::AttributeType::Int as i32,
+            i: to as i64,
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+fn try_wrap_fp16_celu_for_ort(
+    initializers: &[TensorProto],
+    input_elem_types: &HashMap<String, i32>,
+    node: &NodeProto,
+) -> Option<Vec<NodeProto>> {
+    if node.op_type != "Celu" {
+        return None;
+    }
+    let input = node.input.first()?;
+    if tensor_elem_type(initializers, input_elem_types, input)?
+        != TensorProto_DataType::Float16 as i32
+    {
+        return None;
+    }
+    let output = node.output.first()?.clone();
+    let f32_input = format!("{input}__ort_f32");
+    let f32_output = format!("{output}__celu_f32");
+    Some(vec![
+        cast_node(
+            &format!("{}__cast_in", node.name),
+            input,
+            &f32_input,
+            TensorProto_DataType::Float as i32,
+        ),
+        NodeProto {
+            op_type: "Celu".to_string(),
+            name: format!("{}__ort_f32", node.name),
+            input: vec![f32_input],
+            output: vec![f32_output.clone()],
+            attribute: node.attribute.clone(),
+            ..Default::default()
+        },
+        cast_node(
+            &format!("{}__cast_out", node.name),
+            &f32_output,
+            &output,
+            TensorProto_DataType::Float16 as i32,
+        ),
+    ])
+}
+
+fn try_wrap_fp16_quantize_linear_for_ort(
+    initializers: &[TensorProto],
+    input_elem_types: &HashMap<String, i32>,
+    node: &NodeProto,
+) -> Option<Vec<NodeProto>> {
+    if node.op_type != "QuantizeLinear" || node.input.is_empty() {
+        return None;
+    }
+    let input = &node.input[0];
+    if tensor_elem_type(initializers, input_elem_types, input)?
+        != TensorProto_DataType::Float16 as i32
+    {
+        return None;
+    }
+    let f32_input = format!("{input}__ort_f32");
+    let mut wrapped = vec![cast_node(
+        &format!("{}__cast_in", node.name),
+        input,
+        &f32_input,
+        TensorProto_DataType::Float as i32,
+    )];
+    let mut quant = node.clone();
+    quant.input[0] = f32_input;
+    quant.name = format!("{}__ort_f32", node.name);
+    wrapped.push(quant);
+    Some(wrapped)
 }
 
 fn initializer_names(model: &ModelProto) -> HashSet<String> {

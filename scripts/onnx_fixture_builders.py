@@ -706,8 +706,6 @@ def _fp16_eligible_names(model: ModelProto, op_type: str, opset: int) -> set[str
         schema = defs.get_schema(node.op_type, opset, ONNX_DOMAIN)
         input_idx = 0
         for param in schema.inputs:
-            if _is_optional(param):
-                continue
             if _is_variadic(param):
                 if _fp16_eligible_type_str(param.type_str):
                     eligible.update(name for name in node.input[input_idx:] if name)
@@ -728,6 +726,9 @@ def _fp16_eligible_names(model: ModelProto, op_type: str, opset: int) -> set[str
             if _fp16_eligible_type_str(param.type_str) and node.output[output_idx]:
                 eligible.add(node.output[output_idx])
             output_idx += 1
+    # Quantize/dequantize scales stay float32 even when the activations are float16.
+    if op_type in ("QuantizeLinear", "DequantizeLinear", "DynamicQuantizeLinear"):
+        eligible.discard("y_scale")
     return eligible
 
 

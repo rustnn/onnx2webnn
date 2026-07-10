@@ -50,15 +50,6 @@ _FP16_EXCLUDED_OPS = frozenset(
         # Constant and Shape have little value as fp16 runtime coverage.
         "Constant",
         "Shape",
-        # Known fp16 lowering/reference gaps; keep these on f32 until handlers
-        # preserve fp16 end-to-end and reference parity is established.
-        "Celu",
-        "GRU",
-        "Hardmax",
-        "LSTM",
-        "QuantizeLinear",
-        "Range",
-        "Shrink",
     }
 )
 

@@ -102,7 +102,7 @@ impl PadHandler {
         let mut result = ConversionResult::default();
         if let Some(onnx_out) = node.output.first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result.output_types.insert(onnx_out.clone(), dtype.clone());
+                result.output_types.insert(onnx_out.clone(), *dtype);
             }
         }
         Ok(result)
@@ -114,12 +114,7 @@ pub fn read_onnx_pads(
     context: &ConversionContext,
     rank: usize,
 ) -> Result<Vec<i64>, OnnxError> {
-    read_onnx_pads_from_maps(
-        node,
-        context.initializers,
-        context.const_values,
-        rank,
-    )
+    read_onnx_pads_from_maps(node, context.initializers, context.const_values, rank)
 }
 
 pub fn read_onnx_pads_from_maps(
@@ -182,7 +177,9 @@ pub fn infer_pad_output_shape(input_shape: &[i64], pads: &[i64]) -> Option<Vec<i
     }
     let mut out = input_shape.to_vec();
     for i in 0..rank {
-        out[i] = out[i].saturating_add(pads[i]).saturating_add(pads[i + rank]);
+        out[i] = out[i]
+            .saturating_add(pads[i])
+            .saturating_add(pads[i + rank]);
     }
     Some(out)
 }
@@ -260,9 +257,7 @@ fn read_int64_tensor_proto(t: &TensorProto) -> Option<Vec<i64>> {
         return Some(
             t.raw_data
                 .chunks_exact(8)
-                .map(|c| {
-                    i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
-                })
+                .map(|c| i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
                 .collect(),
         );
     }
@@ -280,7 +275,11 @@ mod tests {
     use super::*;
     use crate::protos::onnx::NodeProto;
 
-    fn create_test_node(inputs: Vec<&str>, outputs: Vec<&str>, attrs: Vec<(&str, Vec<i64>)>) -> NodeProto {
+    fn create_test_node(
+        inputs: Vec<&str>,
+        outputs: Vec<&str>,
+        attrs: Vec<(&str, Vec<i64>)>,
+    ) -> NodeProto {
         NodeProto {
             op_type: "Pad".to_string(),
             name: "test_pad".to_string(),

@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-// Pooling operators: MaxPool, AveragePool, GlobalMaxPool, GlobalAveragePool
+// Pooling operators: MaxPool, AveragePool, LpPool, GlobalMaxPool, GlobalAveragePool
 //
 // Maps ONNX pooling ops to WebNN maxPool2d / averagePool2d (NCHW layout).
 
@@ -33,7 +33,7 @@ impl OpHandler for PoolHandler {
     fn supports(&self, op_type: &str) -> bool {
         matches!(
             op_type,
-            "MaxPool" | "AveragePool" | "GlobalMaxPool" | "GlobalAveragePool"
+            "MaxPool" | "AveragePool" | "LpPool" | "GlobalMaxPool" | "GlobalAveragePool"
         )
     }
 
@@ -53,16 +53,23 @@ impl OpHandler for PoolHandler {
         match op_type {
             "MaxPool" => self.convert_pool(node, &node_name, context, b, PoolKind::Max),
             "AveragePool" => self.convert_pool(node, &node_name, context, b, PoolKind::Average),
+            "LpPool" => {
+                let p = lp_pool_p(node);
+                if p != 2 {
+                    return Err(OnnxError::unsupported_op(
+                        format!("LpPool(p={p})"),
+                        node_name,
+                    ));
+                }
+                self.convert_pool(node, &node_name, context, b, PoolKind::L2)
+            }
             "GlobalMaxPool" => {
                 self.convert_global_pool(node, &node_name, context, b, PoolKind::Max)
             }
             "GlobalAveragePool" => {
                 self.convert_global_pool(node, &node_name, context, b, PoolKind::Average)
             }
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -71,6 +78,7 @@ impl OpHandler for PoolHandler {
 enum PoolKind {
     Max,
     Average,
+    L2,
 }
 
 #[derive(Debug, Clone)]
@@ -206,10 +214,10 @@ fn build_pool_2d_options(
     }
 
     if matches!(kind, PoolKind::Average) && attrs.count_include_pad {
-        return Err(OnnxError::UnsupportedOp {
-            op: "AveragePool(count_include_pad=1)".to_string(),
-            node: String::new(),
-        });
+        return Err(OnnxError::unsupported_op(
+            "AveragePool(count_include_pad=1)".to_string(),
+            String::new(),
+        ));
     }
 
     let mut opts = MLPool2dOptions {
@@ -260,6 +268,7 @@ impl PoolHandler {
         let out = match kind {
             PoolKind::Max => b.builder.max_pool2d_with_options(input, opts),
             PoolKind::Average => b.builder.average_pool2d_with_options(input, opts),
+            PoolKind::L2 => b.builder.l2_pool2d_with_options(input, opts),
         }
         .map_err(map_op_error)?;
 
@@ -282,6 +291,7 @@ impl PoolHandler {
         let op_label = match kind {
             PoolKind::Max => "MaxPool",
             PoolKind::Average => "AveragePool",
+            PoolKind::L2 => "LpPool",
         };
 
         let inputs = node.input.as_slice();
@@ -293,10 +303,10 @@ impl PoolHandler {
             )));
         }
         if matches!(kind, PoolKind::Max) && node.output.len() > 1 {
-            return Err(OnnxError::UnsupportedOp {
-                op: "MaxPool(with indices output)".to_string(),
-                node: node_name.to_string(),
-            });
+            return Err(OnnxError::unsupported_op(
+                "MaxPool(with indices output)".to_string(),
+                node_name.to_string(),
+            ));
         }
 
         let input_raw = inputs[0].as_str();
@@ -330,10 +340,10 @@ impl PoolHandler {
                 input_shape.as_deref(),
                 b,
             ),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: format!("{}{}D", op_label, spatial_rank),
-                node: node_name.to_string(),
-            }),
+            _ => Err(OnnxError::unsupported_op(
+                format!("{}{}D", op_label, spatial_rank),
+                node_name.to_string(),
+            )),
         }
     }
 
@@ -376,12 +386,7 @@ impl PoolHandler {
         let reshape_in_label = sanitize_identifier(&format!("{node_name}_x4d"));
         let pool_label = sanitize_identifier(&format!("{node_name}_pool2d"));
 
-        let in_4d = i64_slice_to_mldim(&[
-            input_shape[0],
-            input_shape[1],
-            input_shape[2],
-            1,
-        ])?;
+        let in_4d = i64_slice_to_mldim(&[input_shape[0], input_shape[1], input_shape[2], 1])?;
         let input = b.resolve_operand(input_raw)?;
         let x4d = b
             .builder
@@ -397,6 +402,7 @@ impl PoolHandler {
         let pooled = match kind {
             PoolKind::Max => b.builder.max_pool2d_with_options(x4d, pool_opts),
             PoolKind::Average => b.builder.average_pool2d_with_options(x4d, pool_opts),
+            PoolKind::L2 => b.builder.l2_pool2d_with_options(x4d, pool_opts),
         }
         .map_err(map_op_error)?;
         b.record_operand(&[&pool_label], pooled);
@@ -423,11 +429,7 @@ impl PoolHandler {
         let out_3d = i64_slice_to_mldim(&[input_shape[0], input_shape[1], spatial_out])?;
         let final_out = b
             .builder
-            .reshape_with_options(
-                pooled,
-                out_3d,
-                OnnxBuilder::labeled_options(output_name),
-            )
+            .reshape_with_options(pooled, out_3d, OnnxBuilder::labeled_options(output_name))
             .map_err(map_op_error)?;
 
         if let Some(onnx_out) = node.output.first() {
@@ -446,9 +448,13 @@ impl PoolHandler {
         b: &mut OnnxBuilder<'_, '_, '_>,
         kind: PoolKind,
     ) -> Result<ConversionResult, OnnxError> {
+        if matches!(kind, PoolKind::L2) {
+            return Err(OnnxError::unsupported_op("GlobalLpPool", node_name));
+        }
         let op_label = match kind {
             PoolKind::Max => "GlobalMaxPool",
             PoolKind::Average => "GlobalAveragePool",
+            PoolKind::L2 => "GlobalLpPool",
         };
         let inputs = node.input.as_slice();
         if inputs.len() != 1 {
@@ -486,6 +492,7 @@ impl PoolHandler {
                 let out = match kind {
                     PoolKind::Max => b.builder.global_max_pool_with_options(input, opts),
                     PoolKind::Average => b.builder.global_average_pool_with_options(input, opts),
+                    PoolKind::L2 => unreachable!("GlobalLpPool handled above"),
                 }
                 .map_err(map_op_error)?;
                 if let Some(onnx_out) = node.output.first() {
@@ -517,12 +524,12 @@ impl PoolHandler {
                 let pooled = match kind {
                     PoolKind::Max => b.builder.max_pool2d_with_options(x4d, pool_opts),
                     PoolKind::Average => b.builder.average_pool2d_with_options(x4d, pool_opts),
+                    PoolKind::L2 => unreachable!("GlobalLpPool handled above"),
                 }
                 .map_err(map_op_error)?;
                 b.record_operand(&[&pool_label], pooled);
 
-                let out_3d =
-                    i64_slice_to_mldim(&[input_shape[0], input_shape[1], 1])?;
+                let out_3d = i64_slice_to_mldim(&[input_shape[0], input_shape[1], 1])?;
                 let final_out = b
                     .builder
                     .reshape_with_options(
@@ -538,12 +545,21 @@ impl PoolHandler {
                 }
                 Ok(ConversionResult::default())
             }
-            _ => Err(OnnxError::UnsupportedOp {
-                op: format!("{}{}D", op_label, spatial.len()),
-                node: node_name.to_string(),
-            }),
+            _ => Err(OnnxError::unsupported_op(
+                format!("{}{}D", op_label, spatial.len()),
+                node_name.to_string(),
+            )),
         }
     }
+}
+
+fn lp_pool_p(node: &NodeProto) -> i64 {
+    for attr in node.attribute.as_slice() {
+        if attr.name.as_str() == "p" {
+            return attr.i;
+        }
+    }
+    2
 }
 
 fn extend_with(src: Option<&[i64]>, fill: i64, target_len: usize) -> Vec<i64> {
@@ -803,8 +819,8 @@ mod tests {
         );
         let err = crate::onnx::ops::convert_handler_with_context(&h, &node, &ctx).unwrap_err();
         match err {
-            OnnxError::UnsupportedOp { op, .. } => {
-                assert!(op.contains("count_include_pad"));
+            OnnxError::UnsupportedOps(ops) => {
+                assert!(ops[0].op.contains("count_include_pad"));
             }
             other => panic!("expected UnsupportedOp, got {:?}", other),
         }
@@ -900,8 +916,8 @@ mod tests {
         );
         let err = crate::onnx::ops::convert_handler_with_context(&h, &node, &ctx).unwrap_err();
         match err {
-            OnnxError::UnsupportedOp { op, .. } => {
-                assert!(op.contains("indices"));
+            OnnxError::UnsupportedOps(ops) => {
+                assert!(ops[0].op.contains("indices"));
             }
             other => panic!("expected UnsupportedOp, got {:?}", other),
         }

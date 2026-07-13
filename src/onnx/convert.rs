@@ -18,16 +18,17 @@
 
 // Main ONNX to WebNN conversion logic
 
-use rustnn::DataType; use rustnn::graph::{Dimension, DynamicDimension};
 use crate::onnx::builder::{map_rustnn_error, tensor_proto_to_bytes, OnnxBuilder};
 use crate::protos::onnx::{
     tensor_shape_proto::dimension::Value as DimensionValue, type_proto::Value as TypeProtoValue,
     ModelProto, TensorProto_DataType,
 };
 use prost::Message;
+use rustnn::graph::{Dimension, DynamicDimension};
 use rustnn::mlcontext::{
     MLContext, MLContextOptions, MLGraph, MLGraphBuilder, MLOperand, MLPowerPreference,
 };
+use rustnn::DataType;
 use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -41,16 +42,38 @@ pub struct ValidatedGraph<'ctx> {
     pub graph: MLGraph<'ctx>,
 }
 
-const MIN_SUPPORTED_OPSET: i64 = 11;
-const MAX_SUPPORTED_OPSET: i64 = 18;
+const MIN_SUPPORTED_OPSET: i64 = 1;
+const MAX_SUPPORTED_OPSET: i64 = 26;
 
 /// ONNX ops that lower to WebNN element-wise logical ops and must emit `uint8` outputs.
 /// Do not inline-fold them as integer constants (e.g. i64), since `where()` requires uint8 conditions.
 fn is_element_wise_logical_onnx_op(op_type: &str) -> bool {
     matches!(
         op_type,
-        "Equal" | "Greater" | "Less" | "GreaterOrEqual" | "LessOrEqual"
+        "Equal"
+            | "Greater"
+            | "Less"
+            | "GreaterOrEqual"
+            | "LessOrEqual"
+            | "Not"
+            | "And"
+            | "Or"
+            | "Xor"
     )
+}
+
+/// One unsupported ONNX node reported during conversion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedOpEntry {
+    pub op: String,
+    pub node: String,
+}
+
+fn format_unsupported_ops_list(ops: &[UnsupportedOpEntry]) -> String {
+    ops.iter()
+        .map(|entry| format!("{} (node: {})", entry.op, entry.node))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Debug, Error)]
@@ -64,8 +87,8 @@ pub enum OnnxError {
     #[error("unsupported ONNX opset version {version} for domain '{domain}'")]
     UnsupportedOpset { domain: String, version: i64 },
 
-    #[error("unsupported operator: {op} (node: {node})")]
-    UnsupportedOp { op: String, node: String },
+    #[error("unsupported operator(s): {}", format_unsupported_ops_list(.0))]
+    UnsupportedOps(Vec<UnsupportedOpEntry>),
 
     #[error("missing required attribute: {attr} in {op}")]
     MissingAttribute { attr: String, op: String },
@@ -78,6 +101,29 @@ pub enum OnnxError {
 
     #[error("shape inference failed for node: {0}")]
     ShapeInference(String),
+}
+
+impl OnnxError {
+    /// Report a single unsupported operator/node pair.
+    pub fn unsupported_op(op: impl Into<String>, node: impl Into<String>) -> Self {
+        Self::UnsupportedOps(vec![UnsupportedOpEntry {
+            op: op.into(),
+            node: node.into(),
+        }])
+    }
+
+    /// True when conversion failed because one or more operators are unsupported.
+    pub fn is_unsupported_op(&self) -> bool {
+        matches!(self, Self::UnsupportedOps(_))
+    }
+
+    /// Unsupported operator entries, when this error is [`Self::UnsupportedOps`].
+    pub fn unsupported_ops(&self) -> Option<&[UnsupportedOpEntry]> {
+        match self {
+            Self::UnsupportedOps(ops) => Some(ops),
+            _ => None,
+        }
+    }
 }
 
 /// Sanitize ONNX identifiers for WebNN DSL compatibility
@@ -111,10 +157,8 @@ pub(crate) fn map_onnx_data_type(onnx_type: i32) -> Result<DataType, OnnxError> 
     })
 }
 
-/// Infer output shape for an ONNX node based on its operation type and inputs
-
 /// Conversion options for ONNX → MLGraphBuilder lowering + ORT validation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ConvertOptions {
     /// Override dynamic dimension values (e.g., batch_size=1, sequence_length=128)
     pub free_dim_overrides: HashMap<String, u32>,
@@ -122,16 +166,6 @@ pub struct ConvertOptions {
     pub optimize: bool,
     /// Experimental: preserve unresolved dynamic input dimensions in graph metadata
     pub experimental_dynamic_inputs: bool,
-}
-
-impl Default for ConvertOptions {
-    fn default() -> Self {
-        Self {
-            free_dim_overrides: HashMap::new(),
-            optimize: false,
-            experimental_dynamic_inputs: false,
-        }
-    }
 }
 
 struct TensorInfo {
@@ -212,6 +246,31 @@ impl OnnxConverter {
         }
 
         let onnx_graph = self.model.graph.as_ref().unwrap();
+
+        // Fail fast on unsupported operators before any graph setup. Input/initializer
+        // registration below can error on tensor kinds an unsupported op happens to use
+        // (e.g. bool/string initializers), which would otherwise mask the real cause with a
+        // confusing shape/builder error instead of a clean `UnsupportedOps`.
+        //
+        // **Domain behavior (today):** the pre-scan keys handlers by `op_type` only; per-node
+        // `domain` (when present on `NodeProto`) is not consulted. That matches
+        // [`OpRegistry::convert_node`] and [`OpRegistry::is_supported`]. Opset gating above
+        // applies only to the standard `ai.onnx` domain (empty or `"ai.onnx"` import); other
+        // `opset_import` entries are not version-checked yet.
+        //
+        // **Custom / vendor domains later:** to support non-official ops (e.g.
+        // `com.microsoft.FusedConv`), extend handlers to register on `(domain, op_type)` and
+        // update this loop to use the same key. Until then, a custom-domain node whose `op_type`
+        // collides with an `ai.onnx` name may pass the pre-scan and be lowered incorrectly —
+        // domain-aware dispatch is required before enabling those graphs.
+        {
+            let registry = crate::onnx::ops::OpRegistry::new();
+            let unsupported = registry.collect_unsupported_nodes(onnx_graph.node.as_slice());
+            if !unsupported.is_empty() {
+                return Err(OnnxError::UnsupportedOps(unsupported));
+            }
+        }
+
         let mut value_name_map: HashMap<String, String> = HashMap::new();
         let mut effective_overrides = options.free_dim_overrides.clone();
         let mut inference_overrides = effective_overrides.clone();
@@ -346,10 +405,9 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                         }
                                     }
                                     DimensionValue::DimParam(dim_param) => {
-                                        if let Some(v) = resolve_dim_override(
-                                            dim_param,
-                                            &effective_overrides,
-                                        ) {
+                                        if let Some(v) =
+                                            resolve_dim_override(dim_param, &effective_overrides)
+                                        {
                                             resolved.push(Dimension::Static(v));
                                         } else if options.experimental_dynamic_inputs {
                                             let max_size = dynamic_max_for_dim(dim_param);
@@ -400,11 +458,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         continue;
                     }
 
-                    b.register_input(&raw_name, data_type.clone(), &shape)?;
+                    b.register_input(&raw_name, data_type, &shape)?;
 
                     value_name_map.insert(raw_name.clone(), name.clone());
                     value_name_map.insert(name.clone(), name.clone());
-                    value_types.insert(raw_name.clone(), data_type.clone());
+                    value_types.insert(raw_name.clone(), data_type);
                     value_types.insert(name.clone(), data_type);
                 }
             }
@@ -437,11 +495,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 .collect();
 
             let bytes = tensor_proto_to_bytes(initializer)?;
-            b.register_constant_from_bytes(initializer.name.as_str(), data_type.clone(), &shape, &bytes)?;
+            b.register_constant_from_bytes(initializer.name.as_str(), data_type, &shape, &bytes)?;
 
             value_name_map.insert(initializer.name.as_str().to_string(), name.clone());
             value_name_map.insert(name.clone(), name.clone());
-            value_types.insert(initializer.name.as_str().to_string(), data_type.clone());
+            value_types.insert(initializer.name.as_str().to_string(), data_type);
             value_types.insert(name, data_type);
         }
 
@@ -504,8 +562,10 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                                         dim_param,
                                                         &inference_overrides,
                                                     )
-                                                    .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
-                                                    as i64,
+                                                    .unwrap_or_else(|| {
+                                                        dynamic_max_for_dim(dim_param)
+                                                    })
+                                                        as i64,
                                                 );
                                             } else if let Some(v) = resolve_dim_for_inference(
                                                 dim_param,
@@ -535,11 +595,16 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                     match dim_value {
                                         DimensionValue::DimValue(v) => {
                                             if *v > 0 {
-                                                dims.push(rustnn::graph::Dimension::Static(*v as u32));
+                                                dims.push(rustnn::graph::Dimension::Static(
+                                                    *v as u32,
+                                                ));
                                             }
                                         }
                                         DimensionValue::DimParam(dim_param) => {
-                                            dims.push(dimension_for_param(dim_param, &inference_overrides));
+                                            dims.push(dimension_for_param(
+                                                dim_param,
+                                                &inference_overrides,
+                                            ));
                                         }
                                     }
                                 }
@@ -605,8 +670,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                     DimensionValue::DimParam(dim_param) => {
                                         if options.experimental_dynamic_inputs {
                                             shape.push(
-                                                resolve_dim_override(dim_param, &inference_overrides)
-                                                    .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
+                                                resolve_dim_override(
+                                                    dim_param,
+                                                    &inference_overrides,
+                                                )
+                                                .unwrap_or_else(|| dynamic_max_for_dim(dim_param))
                                                     as i64,
                                             );
                                         } else if let Some(v) = resolve_dim_for_inference(
@@ -641,7 +709,10 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                         }
                                     }
                                     DimensionValue::DimParam(dim_param) => {
-                                        dims.push(dimension_for_param(dim_param, &inference_overrides));
+                                        dims.push(dimension_for_param(
+                                            dim_param,
+                                            &inference_overrides,
+                                        ));
                                     }
                                 }
                             }
@@ -935,11 +1006,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         }
 
                         let shape_u32: Vec<u32> = shape.iter().map(|d| *d as u32).collect();
-                        b.register_constant_from_bytes(&const_name, dtype.clone(), &shape_u32, &bytes)?;
+                        b.register_constant_from_bytes(&const_name, dtype, &shape_u32, &bytes)?;
 
                         value_name_map.insert(out.to_string(), const_name.clone());
                         value_name_map.insert(const_name.clone(), const_name.clone());
-                        value_types.insert(out.to_string(), dtype.clone());
+                        value_types.insert(out.to_string(), dtype);
                         value_types.insert(const_name, dtype);
                     }
                 }
@@ -965,21 +1036,18 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
 
             // Track output shapes after conversion to prevent shape inflation
             // Use .insert() to force correct shapes (not .or_insert() which preserves old shapes)
-            if let Some(inferred_shape) =
-                crate::onnx::shape_inference::infer_node_output_shape(
-                    onnx_node,
-                    &value_shapes,
-                    &initializers_map,
-                    &const_values,
-                )
-            {
+            if let Some(inferred_shape) = crate::onnx::shape_inference::infer_node_output_shape(
+                onnx_node,
+                &value_shapes,
+                &initializers_map,
+                &const_values,
+            ) {
                 for output_name in onnx_node.output.as_slice() {
                     // Insert shape for both raw and sanitized names
                     value_shapes.insert(output_name.to_string(), inferred_shape.clone());
                     value_shapes.insert(sanitize_identifier(output_name), inferred_shape.clone());
                 }
             }
-
         }
 
         Ok(())
@@ -1036,6 +1104,14 @@ pub fn convert_onnx<P: AsRef<Path>>(
     convert_model(model, &options)
 }
 
+/// Lower an in-memory ONNX [`ModelProto`] to [`MLGraphBuilder`] and validate with ORT `build()`.
+pub fn convert_model_proto(
+    model: ModelProto,
+    options: &ConvertOptions,
+) -> Result<ValidatedGraph<'static>, OnnxError> {
+    convert_model(model, options)
+}
+
 /// Lower ONNX to [`MLGraphBuilder`] and validate with ORT `build()`.
 pub(crate) fn convert_model(
     model: ModelProto,
@@ -1044,11 +1120,8 @@ pub(crate) fn convert_model(
     let converter = OnnxConverter::new(model.clone())?;
     converter.extract_metadata()?;
 
-    let mut context = MLContext::create(&MLContextOptions::new(
-        MLPowerPreference::Default,
-        false,
-    ))
-    .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
+    let mut context = MLContext::create(&MLContextOptions::new(MLPowerPreference::Default, false))
+        .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
 
     let mut ml_builder = MLGraphBuilder::new(&mut context).map_err(map_rustnn_error)?;
     let mut onnx_builder = OnnxBuilder::new(&mut ml_builder);
@@ -1192,6 +1265,51 @@ mod tests {
         // Verify MIN value
         let min_bytes: [u8; 8] = bytes[8..16].try_into().unwrap();
         assert_eq!(i64::from_le_bytes(min_bytes), i64::MIN);
+    }
+
+    #[test]
+    fn test_collects_all_unsupported_ops() {
+        use crate::protos::onnx::{GraphProto, ModelProto, NodeProto, OperatorSetIdProto};
+
+        let model = ModelProto {
+            opset_import: vec![OperatorSetIdProto {
+                version: 17,
+                ..Default::default()
+            }],
+            graph: Some(GraphProto {
+                node: vec![
+                    NodeProto {
+                        op_type: "If".to_string(),
+                        name: "if_node".to_string(),
+                        ..Default::default()
+                    },
+                    NodeProto {
+                        op_type: "Loop".to_string(),
+                        name: "loop_node".to_string(),
+                        ..Default::default()
+                    },
+                    NodeProto {
+                        op_type: "Add".to_string(),
+                        name: "add_node".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let err = match convert_model_proto(model, &ConvertOptions::default()) {
+            Err(err) => err,
+            Ok(_) => panic!("expected unsupported ops error"),
+        };
+        assert!(err.is_unsupported_op());
+        let ops = err.unsupported_ops().expect("unsupported ops payload");
+        assert_eq!(ops.len(), 2);
+        assert_eq!(ops[0].op, "If");
+        assert_eq!(ops[0].node, "if_node");
+        assert_eq!(ops[1].op, "Loop");
+        assert_eq!(ops[1].node, "loop_node");
     }
 
     #[test]

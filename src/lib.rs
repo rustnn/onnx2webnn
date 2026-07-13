@@ -9,4 +9,8 @@ pub mod protos;
 
 pub mod onnx;
 
-pub use onnx::convert::{convert_onnx, ConvertOptions, OnnxError, ValidatedGraph};
+pub use onnx::convert::{
+    convert_model_proto, convert_onnx, ConvertOptions, OnnxError, UnsupportedOpEntry,
+    ValidatedGraph,
+};
+pub use onnx::test_models;

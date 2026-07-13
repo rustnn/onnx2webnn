@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-// Elementwise binary operators: Add, Sub, Mul, Div, Pow
+// Elementwise binary operators: Add, Sub, Mul, Div, Pow, Mod
 
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::convert::{sanitize_identifier, OnnxError};
@@ -30,7 +30,7 @@ impl OpHandler for ElementwiseHandler {
     fn supports(&self, op_type: &str) -> bool {
         matches!(
             op_type,
-            "Add" | "Sub" | "Mul" | "Div" | "Pow" | "Min" | "Max"
+            "Add" | "Sub" | "Mul" | "Div" | "Pow" | "Min" | "Max" | "Mod"
         )
     }
 
@@ -48,11 +48,9 @@ impl OpHandler for ElementwiseHandler {
         };
 
         let inputs = node.input.as_slice();
-        if inputs.len() != 2 {
+        if inputs.is_empty() {
             return Err(OnnxError::InvalidShape(format!(
-                "{} expects 2 inputs, got {}",
-                op_type,
-                inputs.len()
+                "{op_type} expects at least 1 input"
             )));
         }
 
@@ -62,10 +60,30 @@ impl OpHandler for ElementwiseHandler {
             sanitize_identifier(&node.output.as_slice()[0].to_string())
         };
 
-        let input0 = b.resolve_operand(&inputs[0])?;
-        let input1 = b.resolve_operand(&inputs[1])?;
-        let opts = OnnxBuilder::labeled_options(&output_name);
-        let out = emit_binary(op_type, b, input0, input1, opts, &node_name)?;
+        if op_type == "Mod" {
+            return convert_mod(node, b, &node_name, &output_name);
+        }
+
+        let out = if inputs.len() == 1 {
+            let input0 = b.resolve_operand(&inputs[0])?;
+            let opts = OnnxBuilder::labeled_options(&output_name);
+            b.builder
+                .identity_with_options(input0, opts)
+                .map_err(map_op_error)?
+        } else {
+            let mut acc = b.resolve_operand(&inputs[0])?;
+            for (step, input_name) in inputs[1..].iter().enumerate() {
+                let next = b.resolve_operand(input_name)?;
+                let label = if step + 2 == inputs.len() {
+                    output_name.clone()
+                } else {
+                    format!("{output_name}__fold_{step}")
+                };
+                let opts = OnnxBuilder::labeled_options(&label);
+                acc = emit_binary(op_type, b, acc, next, opts, &node_name)?;
+            }
+            acc
+        };
 
         if let Some(output) = node.output.as_slice().first() {
             b.record_operand(&[output.as_str(), &output_name], out);
@@ -75,6 +93,72 @@ impl OpHandler for ElementwiseHandler {
 
         Ok(ConversionResult::default())
     }
+}
+
+/// ONNX Mod with `fmod=1`: `A - B * floor(A / B)`.
+fn convert_mod(
+    node: &NodeProto,
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    node_name: &str,
+    output_name: &str,
+) -> Result<ConversionResult, OnnxError> {
+    let inputs = node.input.as_slice();
+    if inputs.len() < 2 {
+        return Err(OnnxError::InvalidShape("Mod expects 2 inputs".to_string()));
+    }
+
+    let mut fmod = 0i64;
+    for attr in node.attribute.as_slice() {
+        if attr.name == "fmod" {
+            fmod = attr.i;
+        }
+    }
+    if fmod != 1 {
+        return Err(OnnxError::unsupported_op(
+            format!("Mod (fmod={fmod})"),
+            node_name.to_string(),
+        ));
+    }
+
+    let a = b.resolve_operand(&inputs[0])?;
+    let b_in = b.resolve_operand(&inputs[1])?;
+
+    let div_label = format!("{output_name}__div");
+    let div_opts = OnnxBuilder::labeled_options(&div_label);
+    let quotient = b
+        .builder
+        .div_with_options(a, b_in, div_opts)
+        .map_err(map_op_error)?;
+
+    let floor_label = format!("{output_name}__floor");
+    let floor_opts = OnnxBuilder::labeled_options(&floor_label);
+    let floored = b
+        .builder
+        .floor_with_options(quotient, floor_opts)
+        .map_err(map_op_error)?;
+
+    let b_operand = b.resolve_operand(&inputs[1])?;
+    let mul_label = format!("{output_name}__mul");
+    let mul_opts = OnnxBuilder::labeled_options(&mul_label);
+    let product = b
+        .builder
+        .mul_with_options(b_operand, floored, mul_opts)
+        .map_err(map_op_error)?;
+
+    let a_operand = b.resolve_operand(&inputs[0])?;
+    let sub_opts = OnnxBuilder::labeled_options(output_name);
+    let out = b
+        .builder
+        .sub_with_options(a_operand, product, sub_opts)
+        .map_err(map_op_error)?;
+
+    if let Some(output) = node.output.as_slice().first() {
+        b.record_operand(&[output.as_str(), output_name], out);
+    } else {
+        b.record_operand(&[output_name], out);
+    }
+
+    Ok(ConversionResult::default())
 }
 
 fn emit_binary(
@@ -115,10 +199,10 @@ fn emit_binary(
             .max_with_options(a, b_in, opts)
             .map_err(map_op_error)?,
         _ => {
-            return Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name.to_string(),
-            })
+            return Err(OnnxError::unsupported_op(
+                op_type.to_string(),
+                node_name.to_string(),
+            ))
         }
     })
 }
@@ -148,6 +232,7 @@ mod tests {
         assert!(handler.supports("Pow"));
         assert!(handler.supports("Min"));
         assert!(handler.supports("Max"));
+        assert!(handler.supports("Mod"));
         assert!(!handler.supports("MatMul"));
     }
 
@@ -183,6 +268,20 @@ mod tests {
     fn test_convert_max() {
         let handler = ElementwiseHandler;
         let node = create_test_node("Max", vec!["a", "b"], vec!["c"]);
+        crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
+    }
+
+    #[test]
+    fn test_convert_variadic_min_three_inputs() {
+        let handler = ElementwiseHandler;
+        let node = create_test_node("Min", vec!["a", "b", "c"], vec!["out"]);
+        crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
+    }
+
+    #[test]
+    fn test_convert_variadic_max_four_inputs() {
+        let handler = ElementwiseHandler;
+        let node = create_test_node("Max", vec!["a", "b", "c", "d"], vec!["out"]);
         crate::onnx::ops::convert_with_test_builder(&handler, &node).unwrap();
     }
 }

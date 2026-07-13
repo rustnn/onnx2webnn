@@ -1,0 +1,298 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 Tarek Ziadé <tarek@ziade.org>
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// ONNX Resize → WebNN resample2d (4-D NCHW, spatial axes [2, 3] for now).
+
+use crate::onnx::builder::{map_op_error, OnnxBuilder};
+use crate::onnx::builder_helpers::{output_label, record_node_output};
+use crate::onnx::convert::OnnxError;
+use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
+use crate::protos::onnx::{NodeProto, TensorProto, TensorProto_DataType};
+use rustnn::operator_options::MLResample2dOptions;
+
+pub struct ResizeHandler;
+
+impl OpHandler for ResizeHandler {
+    fn supports(&self, op_type: &str) -> bool {
+        op_type == "Resize"
+    }
+
+    fn convert(
+        &self,
+        node: &NodeProto,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let node_name = if !node.name.is_empty() {
+            node.name.clone()
+        } else {
+            "unnamed".to_string()
+        };
+
+        let inputs = node.input.as_slice();
+        if inputs.is_empty() || inputs[0].is_empty() {
+            return Err(OnnxError::InvalidShape(
+                "Resize expects a non-empty data input".to_string(),
+            ));
+        }
+
+        let input_shape = context
+            .resolve_shape(&inputs[0])
+            .ok_or_else(|| OnnxError::InvalidShape("Resize input shape is unknown".to_string()))?;
+        if input_shape.len() != 4 {
+            return Err(OnnxError::unsupported_op("Resize", &node_name));
+        }
+
+        let mode = parse_resize_mode(node)?;
+        let axes: [usize; 2] = [2, 3];
+        let spatial_scales = resolve_spatial_scales(node, context, input_shape, &axes)?;
+
+        let input = b.resolve_operand(&inputs[0])?;
+        let output_name = output_label(node, &node_name);
+        let opts = MLResample2dOptions {
+            label: output_name.clone(),
+            mode,
+            scales: spatial_scales,
+            sizes: None,
+            axes: axes.iter().map(|&a| a as u32).collect(),
+        };
+        let out = b
+            .builder
+            .resample2d_with_options(input, opts)
+            .map_err(map_op_error)?;
+
+        if let Some(onnx_out) = node.output.first() {
+            record_node_output(b, onnx_out, &output_name, out);
+        } else {
+            b.record_operand(&[&output_name], out);
+        }
+        Ok(ConversionResult::default())
+    }
+}
+
+fn parse_resize_mode(node: &NodeProto) -> Result<String, OnnxError> {
+    let mut mode = "nearest".to_string();
+    for attr in node.attribute.as_slice() {
+        if attr.name.as_str() == "mode" {
+            if let Ok(s) = String::from_utf8(attr.s.clone()) {
+                if !s.is_empty() {
+                    mode = s;
+                }
+            }
+        }
+    }
+
+    match mode.as_str() {
+        "nearest" => Ok("nearest-neighbor".to_string()),
+        "linear" => Ok("linear".to_string()),
+        "cubic" => Err(OnnxError::unsupported_op("Resize", node.name.as_str())),
+        other => Err(OnnxError::InvalidShape(format!(
+            "Resize mode '{other}' is not supported"
+        ))),
+    }
+}
+
+fn resolve_spatial_scales(
+    node: &NodeProto,
+    context: &ConversionContext,
+    input_shape: &[i64],
+    axes: &[usize; 2],
+) -> Result<Vec<f32>, OnnxError> {
+    let inputs = node.input.as_slice();
+    let scales_name = inputs.get(2).filter(|s| !s.is_empty()).map(|s| s.as_str());
+    let sizes_name = inputs.get(3).filter(|s| !s.is_empty()).map(|s| s.as_str());
+
+    if let Some(name) = sizes_name {
+        let sizes = read_int64_initializer(name, context).ok_or_else(|| {
+            OnnxError::InvalidShape(format!("Resize sizes initializer '{name}' not found"))
+        })?;
+        return spatial_scales_from_sizes(input_shape, axes, &sizes);
+    }
+
+    if let Some(name) = scales_name {
+        if let Some(sizes) = read_int64_initializer(name, context) {
+            if sizes.len() == input_shape.len() {
+                return spatial_scales_from_sizes(input_shape, axes, &sizes);
+            }
+        }
+        if let Some(scales) = read_float32_initializer(name, context)? {
+            return spatial_scales_from_scales(input_shape, axes, &scales);
+        }
+    }
+
+    Err(OnnxError::InvalidShape(
+        "Resize requires scales or sizes input".to_string(),
+    ))
+}
+
+fn spatial_scales_from_sizes(
+    input_shape: &[i64],
+    axes: &[usize; 2],
+    sizes: &[i64],
+) -> Result<Vec<f32>, OnnxError> {
+    if sizes.len() != input_shape.len() {
+        return Err(OnnxError::InvalidShape(format!(
+            "Resize sizes length {} does not match input rank {}",
+            sizes.len(),
+            input_shape.len()
+        )));
+    }
+
+    let mut scales = Vec::with_capacity(2);
+    for &axis in axes {
+        let in_dim = input_shape[axis].max(1) as f32;
+        let out_dim = sizes[axis].max(1) as f32;
+        scales.push(out_dim / in_dim);
+    }
+    Ok(scales)
+}
+
+fn spatial_scales_from_scales(
+    input_shape: &[i64],
+    axes: &[usize; 2],
+    scales: &[f32],
+) -> Result<Vec<f32>, OnnxError> {
+    match scales.len() {
+        2 => Ok(scales.to_vec()),
+        len if len == input_shape.len() => {
+            let mut out = Vec::with_capacity(2);
+            for &axis in axes {
+                out.push(scales[axis]);
+            }
+            Ok(out)
+        }
+        other => Err(OnnxError::InvalidShape(format!(
+            "Resize scales length {other} is not supported for 4-D input"
+        ))),
+    }
+}
+
+fn read_int64_initializer(name: &str, context: &ConversionContext) -> Option<Vec<i64>> {
+    let tensor = context.initializers.get(name).or_else(|| {
+        context
+            .initializers
+            .get(&crate::onnx::convert::sanitize_identifier(name))
+    })?;
+    read_int64_tensor_proto(tensor)
+}
+
+fn read_float32_initializer(
+    name: &str,
+    context: &ConversionContext,
+) -> Result<Option<Vec<f32>>, OnnxError> {
+    let Some(tensor) = context.initializers.get(name).or_else(|| {
+        context
+            .initializers
+            .get(&crate::onnx::convert::sanitize_identifier(name))
+    }) else {
+        return Ok(None);
+    };
+
+    if tensor.data_type != TensorProto_DataType::Float as i32 {
+        return Ok(None);
+    }
+
+    if !tensor.float_data.is_empty() {
+        return Ok(Some(tensor.float_data.clone()));
+    }
+
+    if !tensor.raw_data.is_empty() {
+        let values = tensor
+            .raw_data
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        return Ok(Some(values));
+    }
+
+    Ok(None)
+}
+
+fn read_int64_tensor_proto(t: &TensorProto) -> Option<Vec<i64>> {
+    if !t.raw_data.is_empty() {
+        if t.data_type == TensorProto_DataType::Int32 as i32 {
+            return Some(
+                t.raw_data
+                    .chunks_exact(4)
+                    .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
+                    .collect(),
+            );
+        }
+        return Some(
+            t.raw_data
+                .chunks_exact(8)
+                .map(|c| i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+                .collect(),
+        );
+    }
+    if !t.int64_data.is_empty() {
+        return Some(t.int64_data.clone());
+    }
+    if !t.int32_data.is_empty() {
+        return Some(t.int32_data.iter().map(|&v| v as i64).collect());
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protos::onnx::{AttributeProto, NodeProto, TensorProto};
+    use std::collections::HashMap;
+
+    fn create_resize_node(inputs: Vec<&str>, mode: &str) -> NodeProto {
+        let mut node = NodeProto {
+            op_type: "Resize".to_string(),
+            name: "test_resize".to_string(),
+            input: inputs.iter().map(|s| s.to_string()).collect(),
+            output: vec!["Y".to_string()],
+            ..Default::default()
+        };
+        node.attribute.push(AttributeProto {
+            name: "mode".to_string(),
+            s: mode.as_bytes().to_vec(),
+            ..Default::default()
+        });
+        node
+    }
+
+    #[test]
+    fn test_resize_handler_supports() {
+        let handler = ResizeHandler;
+        assert!(handler.supports("Resize"));
+        assert!(!handler.supports("Upsample"));
+    }
+
+    #[test]
+    fn test_convert_resize_sizes() {
+        let handler = ResizeHandler;
+        let node = create_resize_node(vec!["X", "", "sizes"], "nearest");
+
+        let sizes_tensor = TensorProto {
+            name: "sizes".to_string(),
+            data_type: TensorProto_DataType::Int64 as i32,
+            dims: vec![4],
+            int64_data: vec![1, 1, 6, 6],
+            ..Default::default()
+        };
+        let mut initializers: HashMap<String, &TensorProto> = HashMap::new();
+        initializers.insert("sizes".to_string(), &sizes_tensor);
+
+        let mut value_shapes = HashMap::new();
+        value_shapes.insert("X".to_string(), vec![1, 1, 4, 4]);
+
+        let context = ConversionContext {
+            initializers: &initializers,
+            value_shapes: &value_shapes,
+            value_shape_dims: crate::onnx::ops::empty_value_shape_dims(),
+            const_values: &HashMap::new(),
+            value_ids: &HashMap::new(),
+            value_types: &HashMap::new(),
+        };
+
+        crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+    }
+}

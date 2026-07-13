@@ -58,7 +58,7 @@ impl OpHandler for ConditionalHandler {
         let mut result = ConversionResult::default();
         if let Some(onnx_out) = node.output.first() {
             if let Some(dtype) = context.value_types.get(&inputs[1]) {
-                result.output_types.insert(onnx_out.clone(), dtype.clone());
+                result.output_types.insert(onnx_out.clone(), *dtype);
             }
         }
         Ok(result)
@@ -68,8 +68,8 @@ impl OpHandler for ConditionalHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustnn::DataType;
     use crate::protos::onnx::NodeProto;
+    use rustnn::DataType;
     use std::collections::HashMap;
 
     fn create_test_node(op_type: &str, inputs: Vec<&str>, outputs: Vec<&str>) -> NodeProto {

@@ -16,9 +16,8 @@
  * limitations under the License.
  */
 
-// Utility operators: Shape, Gather, Slice
+// Utility operators: Shape, Gather, GatherND, GatherElements, ReverseSequence, Slice
 
-use rustnn::DataType;
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::builder_helpers::{
     ast_dims_to_mldim, expand_with_shape, i64_starts_as_u32, output_label, record_node_output,
@@ -29,7 +28,11 @@ use crate::onnx::ops::{
     normalize_axis_best_effort, ConversionContext, ConversionResult, OpHandler,
 };
 use crate::protos::onnx::NodeProto;
-use rustnn::operator_options::{MLDimension, MLDynamicDimension, MLGatherOptions, MLTriangularOptions};
+use half::f16;
+use rustnn::operator_options::{
+    MLDimension, MLDynamicDimension, MLGatherOptions, MLReverseOptions, MLTriangularOptions,
+};
+use rustnn::DataType;
 
 pub struct UtilityHandler;
 
@@ -37,7 +40,15 @@ impl OpHandler for UtilityHandler {
     fn supports(&self, op_type: &str) -> bool {
         matches!(
             op_type,
-            "Shape" | "Gather" | "Slice" | "ConstantOfShape" | "Range" | "Trilu"
+            "Shape"
+                | "Gather"
+                | "GatherND"
+                | "GatherElements"
+                | "ReverseSequence"
+                | "Slice"
+                | "ConstantOfShape"
+                | "Range"
+                | "Trilu"
         )
     }
 
@@ -57,14 +68,14 @@ impl OpHandler for UtilityHandler {
         match op_type {
             "Shape" => self.convert_shape(node, &node_name, b),
             "Gather" => self.convert_gather(node, &node_name, context, b),
+            "GatherND" => self.convert_gather_nd(node, &node_name, context, b),
+            "GatherElements" => self.convert_gather_elements(node, &node_name, context, b),
+            "ReverseSequence" => self.convert_reverse_sequence(node, &node_name, context, b),
             "Slice" => self.convert_slice(node, &node_name, context, b),
             "ConstantOfShape" => self.convert_constant_of_shape(node, &node_name, context, b),
             "Range" => self.convert_range(node, &node_name, context, b),
             "Trilu" => self.convert_trilu(node, &node_name, context, b),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
-            }),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -99,6 +110,76 @@ impl UtilityHandler {
         Ok(ConversionResult::default())
     }
 
+    fn read_scalar_f64(&self, name: &str, context: &ConversionContext) -> Option<f64> {
+        use crate::protos::onnx::TensorProto_DataType;
+        if let Some(t) = context.initializers.get(name) {
+            if t.data_type == TensorProto_DataType::Float as i32 {
+                if !t.float_data.is_empty() {
+                    return Some(f64::from(t.float_data[0]));
+                }
+                let raw = t.raw_data.as_slice();
+                if raw.len() >= 4 {
+                    let bits = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
+                    return Some(f64::from(f32::from_bits(bits)));
+                }
+            }
+            if t.data_type == TensorProto_DataType::Float16 as i32 {
+                if !t.int32_data.is_empty() {
+                    return Some(f64::from(f16::from_bits(t.int32_data[0] as u16).to_f32()));
+                }
+                let raw = t.raw_data.as_slice();
+                if raw.len() >= 2 {
+                    let bits = u16::from_le_bytes([raw[0], raw[1]]);
+                    return Some(f64::from(f16::from_bits(bits).to_f32()));
+                }
+            }
+            if t.data_type == TensorProto_DataType::Double as i32 {
+                if !t.double_data.is_empty() {
+                    return Some(t.double_data[0]);
+                }
+                let raw = t.raw_data.as_slice();
+                if raw.len() >= 8 {
+                    let bits = u64::from_le_bytes([
+                        raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
+                    ]);
+                    return Some(f64::from_bits(bits));
+                }
+            }
+        }
+        // Integer initializers / folded consts represent exact values.
+        self.read_scalar_i64(name, context).map(|v| v as f64)
+    }
+
+    /// Element type of an ONNX `Range` (all three inputs share type `T`).
+    ///
+    /// Returns the ONNX `Range` element type. `float64` is materialized as `float32`; `float16`
+    /// stays float16.
+    fn range_element_type(&self, inputs: &[String], context: &ConversionContext) -> DataType {
+        use crate::protos::onnx::TensorProto_DataType;
+        for name in inputs.iter().take(3) {
+            if let Some(t) = context.initializers.get(name.as_str()) {
+                let dt = t.data_type;
+                if dt == TensorProto_DataType::Float16 as i32 {
+                    return DataType::Float16;
+                }
+                if dt == TensorProto_DataType::Float as i32
+                    || dt == TensorProto_DataType::Double as i32
+                {
+                    return DataType::Float32;
+                }
+            }
+            if let Some(dt) = context.value_types.get(name.as_str()) {
+                if matches!(dt, DataType::Float16) {
+                    return DataType::Float16;
+                }
+                if matches!(dt, DataType::Float32) {
+                    return DataType::Float32;
+                }
+            }
+        }
+        DataType::Int64
+    }
+
     fn read_scalar_i64(&self, name: &str, context: &ConversionContext) -> Option<i64> {
         if let Some(vals) = context.const_values.get(name) {
             return vals.first().copied();
@@ -123,6 +204,11 @@ impl UtilityHandler {
         None
     }
 
+    fn scalar_as_i64(&self, name: &str, context: &ConversionContext) -> Option<i64> {
+        self.read_scalar_i64(name, context)
+            .or_else(|| self.read_scalar_f64(name, context).map(|v| v as i64))
+    }
+
     fn convert_range(
         &self,
         node: &NodeProto,
@@ -144,9 +230,23 @@ impl UtilityHandler {
             sanitize_identifier(&node.output.as_slice()[0].to_string())
         };
 
-        let start = self.read_scalar_i64(&inputs[0], context);
-        let limit = self.read_scalar_i64(&inputs[1], context);
-        let delta = self.read_scalar_i64(&inputs[2], context);
+        // Float ranges materialize a constant. The dynamic (symbolic-dim) path below is
+        // integer-only — it exists to express runtime shape dimensions, which are always integral.
+        let range_dtype = self.range_element_type(inputs, context);
+        if matches!(range_dtype, DataType::Float32 | DataType::Float16) {
+            return self.convert_range_static_float(
+                node,
+                node_name,
+                &output_name,
+                range_dtype,
+                context,
+                b,
+            );
+        }
+
+        let start = self.scalar_as_i64(&inputs[0], context);
+        let limit = self.scalar_as_i64(&inputs[1], context);
+        let delta = self.scalar_as_i64(&inputs[2], context);
 
         let start_dim = crate::onnx::shape_inference::dynamic_scalar_dimension_for_value(
             &inputs[0],
@@ -294,6 +394,77 @@ impl UtilityHandler {
         Ok(result)
     }
 
+    /// Fully-static float `Range`: emit the sequence as a `float32` constant.
+    ///
+    /// ONNX defines the length as `max(ceil((limit - start) / delta), 0)` and element `i` as
+    /// `start + i * delta`. Indexing by `i` (rather than accumulating) avoids float drift.
+    fn convert_range_static_float(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        output_name: &str,
+        dtype: DataType,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        let start = self.read_scalar_f64(&inputs[0], context).ok_or_else(|| {
+            OnnxError::InvalidShape(format!(
+                "Range {node_name} requires a constant scalar start input"
+            ))
+        })?;
+        let limit = self.read_scalar_f64(&inputs[1], context).ok_or_else(|| {
+            OnnxError::InvalidShape(format!(
+                "Range {node_name} requires a constant scalar limit input"
+            ))
+        })?;
+        let delta = self.read_scalar_f64(&inputs[2], context).ok_or_else(|| {
+            OnnxError::InvalidShape(format!(
+                "Range {node_name} requires a constant scalar delta input"
+            ))
+        })?;
+
+        if delta == 0.0 {
+            return Err(OnnxError::InvalidShape(
+                "Range delta cannot be zero".to_string(),
+            ));
+        }
+
+        let count = ((limit - start) / delta).ceil();
+        let count = if count.is_finite() && count > 0.0 {
+            count as usize
+        } else {
+            0
+        };
+
+        let mut values: Vec<f32> = (0..count)
+            .map(|i| (start + (i as f64) * delta) as f32)
+            .collect();
+        // WebNN constants cannot be zero-length; match the integer path which emits one element
+        // for an empty range.
+        if values.is_empty() {
+            values.push(0.0);
+        }
+
+        let bytes: Vec<u8> = match dtype {
+            DataType::Float16 => values
+                .iter()
+                .flat_map(|v| f16::from_f32(*v).to_bits().to_le_bytes())
+                .collect(),
+            _ => values.iter().flat_map(|v| v.to_le_bytes()).collect(),
+        };
+        b.register_constant_from_bytes(output_name, dtype, &[values.len() as u32], &bytes)?;
+        if let Some(out) = node.output.as_slice().first() {
+            record_node_output(b, out, output_name, b.resolve_operand(output_name)?);
+        }
+
+        let mut result = ConversionResult::default();
+        if let Some(out) = node.output.as_slice().first() {
+            result.output_types.insert(out.to_string(), dtype);
+        }
+        Ok(result)
+    }
+
     fn convert_trilu(
         &self,
         node: &NodeProto,
@@ -351,9 +522,7 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 
@@ -435,6 +604,19 @@ impl UtilityHandler {
                                 fill_value_i64 = 0f32.to_bits() as i64;
                             }
                         }
+                        x if x == crate::protos::onnx::TensorProto_DataType::Float16 as i32 => {
+                            dtype = DataType::Float16;
+                            if !t.int32_data.as_slice().is_empty() {
+                                fill_value_i64 = t.int32_data.as_slice()[0] as i64;
+                            } else if !t.raw_data.as_slice().is_empty()
+                                && t.raw_data.as_slice().len() >= 2
+                            {
+                                let raw = &t.raw_data.as_slice()[..2];
+                                fill_value_i64 = u16::from_le_bytes([raw[0], raw[1]]) as i64;
+                            } else {
+                                fill_value_i64 = f16::from_f32(0.0).to_bits() as i64;
+                            }
+                        }
                         // INT64
                         x if x == crate::protos::onnx::TensorProto_DataType::Int64 as i32 => {
                             dtype = DataType::Int64;
@@ -464,15 +646,11 @@ impl UtilityHandler {
                     let f = f32::from_bits(fill_value_i64 as u32);
                     f.to_le_bytes().to_vec()
                 }
+                DataType::Float16 => (fill_value_i64 as u16).to_le_bytes().to_vec(),
                 _ => fill_value_i64.to_le_bytes().to_vec(),
             };
             let scalar_name = format!("{}_fill", output_name);
-            b.register_constant_from_bytes(
-                &scalar_name,
-                dtype.clone(),
-                &[1],
-                &scalar_bytes,
-            )?;
+            b.register_constant_from_bytes(&scalar_name, dtype, &[1], &scalar_bytes)?;
 
             let scalar = b.resolve_operand(&scalar_name)?;
             let out = expand_with_shape(b, scalar, &output_name, ast_dims_to_mldim(dims))?;
@@ -505,6 +683,10 @@ impl UtilityHandler {
                 let val = f.to_le_bytes();
                 val.repeat(numel)
             }
+            DataType::Float16 => {
+                let val = (fill_value_i64 as u16).to_le_bytes();
+                val.repeat(numel)
+            }
             _ => {
                 let val = fill_value_i64.to_le_bytes();
                 val.repeat(numel)
@@ -513,7 +695,7 @@ impl UtilityHandler {
 
         b.register_constant_from_bytes(
             &output_name,
-            dtype.clone(),
+            dtype,
             &shape.iter().map(|d| *d as u32).collect::<Vec<_>>(),
             &bytes,
         )?;
@@ -575,9 +757,155 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Convert ONNX GatherND to WebNN gatherND.
+    ///
+    /// `batch_dims` is ignored for now (WebNN gatherND has no batch-dimension option).
+    fn convert_gather_nd(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "GatherND expects 2 inputs (data, indices), got {}",
+                inputs.len()
+            )));
+        }
+
+        let output_name = output_label(node, node_name);
+        let data = b.resolve_operand(&inputs[0])?;
+        let indices = b.resolve_operand(&inputs[1])?;
+        let opts = OnnxBuilder::labeled_options(&output_name);
+        let out = b
+            .builder
+            .gather_nd_with_options(data, indices, opts)
+            .map_err(map_op_error)?;
+        if let Some(output) = node.output.as_slice().first() {
+            record_node_output(b, output, &output_name, out);
+        }
+        let mut result = ConversionResult::default();
+        if let Some(output) = node.output.as_slice().first() {
+            if let Some(dtype) = context.value_types.get(&inputs[0]) {
+                result.output_types.insert(output.to_string(), *dtype);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Convert ONNX GatherElements to WebNN gatherElements.
+    fn convert_gather_elements(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "GatherElements expects 2 inputs (data, indices), got {}",
+                inputs.len()
+            )));
+        }
+
+        let mut axis = 0i64;
+        for attr in node.attribute.as_slice() {
+            if attr.name.as_str() == "axis" && attr.i != 0 {
+                axis = attr.i;
+            }
+        }
+
+        let output_name = output_label(node, node_name);
+        let axis = if let Some(rank) = context.input_rank(inputs[0].as_str()) {
+            normalize_axis_best_effort(axis, rank)
+        } else {
+            axis
+        };
+        let data = b.resolve_operand(&inputs[0])?;
+        let indices = b.resolve_operand(&inputs[1])?;
+        let opts = MLGatherOptions {
+            label: output_name.clone(),
+            axis: axis as u32,
+        };
+        let out = b
+            .builder
+            .gather_elements_with_options(data, indices, opts)
+            .map_err(map_op_error)?;
+        if let Some(output) = node.output.as_slice().first() {
+            record_node_output(b, output, &output_name, out);
+        }
+        let mut result = ConversionResult::default();
+        if let Some(output) = node.output.as_slice().first() {
+            if let Some(dtype) = context.value_types.get(&inputs[0]) {
+                result.output_types.insert(output.to_string(), *dtype);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Convert ONNX ReverseSequence to WebNN reverse along `time_axis`.
+    ///
+    /// `sequence_lens` is accepted as the second input but not used yet — WebNN `reverse`
+    /// reverses the full axis and has no per-sequence length support.
+    fn convert_reverse_sequence(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.len() < 2 {
+            return Err(OnnxError::InvalidShape(format!(
+                "ReverseSequence expects 2 inputs (data, sequence_lens), got {}",
+                inputs.len()
+            )));
+        }
+
+        let mut _batch_axis = 1i64;
+        let mut time_axis = 0i64;
+        for attr in node.attribute.as_slice() {
+            match attr.name.as_str() {
+                "batch_axis" => _batch_axis = attr.i,
+                "time_axis" => time_axis = attr.i,
+                _ => {}
+            }
+        }
+
+        let output_name = output_label(node, node_name);
+        let time_axis = if let Some(rank) = context.input_rank(inputs[0].as_str()) {
+            normalize_axis_best_effort(time_axis, rank)
+        } else {
+            time_axis
+        };
+        let input = b.resolve_operand(&inputs[0])?;
+        let opts = MLReverseOptions {
+            label: output_name.clone(),
+            axes: Some(vec![time_axis as u32]),
+        };
+        let out = b
+            .builder
+            .reverse_with_options(input, opts)
+            .map_err(map_op_error)?;
+        if let Some(output) = node.output.as_slice().first() {
+            record_node_output(b, output, &output_name, out);
+        }
+        let mut result = ConversionResult::default();
+        if let Some(output) = node.output.as_slice().first() {
+            if let Some(dtype) = context.value_types.get(&inputs[0]) {
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 
@@ -939,9 +1267,7 @@ impl UtilityHandler {
         let mut result = ConversionResult::default();
         if let Some(output) = node.output.as_slice().first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
-                result
-                    .output_types
-                    .insert(output.to_string(), dtype.clone());
+                result.output_types.insert(output.to_string(), *dtype);
             }
         }
 
@@ -952,8 +1278,8 @@ impl UtilityHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustnn::DataType;
     use crate::protos::onnx::{AttributeProto, NodeProto, TensorProto, TensorProto_DataType};
+    use rustnn::DataType;
     fn create_test_node(op_type: &str, inputs: Vec<&str>, outputs: Vec<&str>) -> NodeProto {
         NodeProto {
             op_type: op_type.to_string(),
@@ -971,6 +1297,85 @@ mod tests {
             ..Default::default()
         };
         node.attribute.push(attr);
+    }
+
+    fn f32_scalar(value: f32) -> TensorProto {
+        TensorProto {
+            data_type: TensorProto_DataType::Float as i32,
+            dims: vec![],
+            raw_data: value.to_le_bytes().to_vec(),
+            ..Default::default()
+        }
+    }
+
+    fn i64_scalar(value: i64) -> TensorProto {
+        TensorProto {
+            data_type: TensorProto_DataType::Int64 as i32,
+            dims: vec![],
+            raw_data: value.to_le_bytes().to_vec(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_convert_range_float_fractional() {
+        let handler = UtilityHandler;
+        let node = create_test_node("Range", vec!["start", "limit", "delta"], vec!["output"]);
+        let start = f32_scalar(1.0);
+        let limit = f32_scalar(2.0);
+        let delta = f32_scalar(0.25);
+        let mut initializers: std::collections::HashMap<String, &TensorProto> =
+            std::collections::HashMap::new();
+        initializers.insert("start".to_string(), &start);
+        initializers.insert("limit".to_string(), &limit);
+        initializers.insert("delta".to_string(), &delta);
+        let value_shapes = std::collections::HashMap::new();
+        let const_values = std::collections::HashMap::new();
+        let value_ids = std::collections::HashMap::new();
+        let value_types = std::collections::HashMap::new();
+        let context = ConversionContext {
+            initializers: &initializers,
+            value_shapes: &value_shapes,
+            value_shape_dims: crate::onnx::ops::empty_value_shape_dims(),
+            const_values: &const_values,
+            value_ids: &value_ids,
+            value_types: &value_types,
+        };
+
+        // Previously `delta` truncated to 0 and errored; now it builds a float32 range.
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        assert_eq!(result.output_types.get("output"), Some(&DataType::Float32));
+    }
+
+    #[test]
+    fn test_convert_range_integer_stays_int64() {
+        let handler = UtilityHandler;
+        let node = create_test_node("Range", vec!["start", "limit", "delta"], vec!["output"]);
+        let start = i64_scalar(0);
+        let limit = i64_scalar(4);
+        let delta = i64_scalar(1);
+        let mut initializers: std::collections::HashMap<String, &TensorProto> =
+            std::collections::HashMap::new();
+        initializers.insert("start".to_string(), &start);
+        initializers.insert("limit".to_string(), &limit);
+        initializers.insert("delta".to_string(), &delta);
+        let value_shapes = std::collections::HashMap::new();
+        let const_values = std::collections::HashMap::new();
+        let value_ids = std::collections::HashMap::new();
+        let value_types = std::collections::HashMap::new();
+        let context = ConversionContext {
+            initializers: &initializers,
+            value_shapes: &value_shapes,
+            value_shape_dims: crate::onnx::ops::empty_value_shape_dims(),
+            const_values: &const_values,
+            value_ids: &value_ids,
+            value_types: &value_types,
+        };
+
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        assert_eq!(result.output_types.get("output"), Some(&DataType::Int64));
     }
 
     #[test]
@@ -1102,7 +1507,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("output"), Some(&DataType::Float32));
     }
 
@@ -1125,7 +1531,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("y"), Some(&DataType::Float32));
     }
 
@@ -1150,7 +1557,8 @@ mod tests {
             value_types: &value_types,
         };
 
-        let result = crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
+        let result =
+            crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
         assert_eq!(result.output_types.get("y"), Some(&DataType::Float16));
     }
 }

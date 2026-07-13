@@ -18,7 +18,7 @@
 
 // Operator handler trait and registry
 
-use crate::onnx::convert::OnnxError;
+use crate::onnx::convert::{OnnxError, UnsupportedOpEntry};
 use crate::protos::onnx::{NodeProto, TensorProto};
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -30,11 +30,14 @@ pub mod conv;
 pub mod conversion;
 pub mod elementwise;
 pub mod matmul;
+pub mod misc;
 pub mod normalization;
 pub mod pad;
 pub mod pool;
 pub mod reduction;
 pub mod reshape;
+pub mod resize;
+pub mod rnn;
 pub mod scatter;
 pub mod utility;
 
@@ -45,11 +48,14 @@ use conv::ConvHandler;
 use conversion::ConversionHandler;
 use elementwise::ElementwiseHandler;
 use matmul::MatMulHandler;
+use misc::MiscHandler;
 use normalization::NormalizationHandler;
 use pad::PadHandler;
 use pool::PoolHandler;
 use reduction::ReductionHandler;
 use reshape::ReshapeHandler;
+use resize::ResizeHandler;
+use rnn::RnnHandler;
 use scatter::ScatterHandler;
 use utility::UtilityHandler;
 
@@ -162,19 +168,59 @@ impl OpRegistry {
             Box::new(ConvHandler),
             Box::new(PoolHandler),
             Box::new(ElementwiseHandler),
+            Box::new(MiscHandler),
             Box::new(ComparisonHandler),
             Box::new(ConditionalHandler),
             Box::new(NormalizationHandler),
             Box::new(ReshapeHandler),
             Box::new(PadHandler),
+            Box::new(ResizeHandler),
             Box::new(ConversionHandler),
             Box::new(UtilityHandler),
             Box::new(ReductionHandler),
             Box::new(ActivationHandler),
             Box::new(ScatterHandler),
+            Box::new(RnnHandler),
         ];
 
         OpRegistry { handlers }
+    }
+
+    /// Returns true if any registered handler claims support for `op_type`.
+    ///
+    /// This mirrors the dispatch in [`convert_node`], but performs no conversion. It lets the
+    /// converter fail fast with a clean [`OnnxError::UnsupportedOps`] before graph setup (input and
+    /// initializer registration) can panic on tensor kinds an unsupported op happens to use
+    /// (e.g. bool/string initializers).
+    ///
+    /// **Domain:** matches on `op_type` only today (standard `ai.onnx` operators). When
+    /// custom-domain handlers are added, this should take `(domain, op_type)` so the pre-scan in
+    /// `convert_with_builder` stays aligned with [`convert_node`].
+    pub fn is_supported(&self, op_type: &str) -> bool {
+        self.handlers.iter().any(|h| h.supports(op_type))
+    }
+
+    /// Collect every graph node whose `op_type` has no registered handler.
+    pub fn collect_unsupported_nodes(&self, nodes: &[NodeProto]) -> Vec<UnsupportedOpEntry> {
+        nodes
+            .iter()
+            .filter_map(|node| {
+                let op_type = node.op_type.as_str();
+                if self.is_supported(op_type) {
+                    None
+                } else {
+                    let node_name = if node.name.is_empty() {
+                        "<unnamed>".to_string()
+                    } else {
+                        node.name.clone()
+                    };
+                    Some(UnsupportedOpEntry {
+                        op: op_type.to_string(),
+                        node: node_name,
+                    })
+                }
+            })
+            .collect()
     }
 
     /// Convert an ONNX node using the appropriate handler and apply to the MLGraphBuilder.
@@ -200,10 +246,7 @@ impl OpRegistry {
             "<unnamed>".to_string()
         };
 
-        Err(OnnxError::UnsupportedOp {
-            op: op_type.to_string(),
-            node: node_name,
-        })
+        Err(OnnxError::unsupported_op(op_type, node_name))
     }
 }
 
@@ -271,8 +314,8 @@ fn register_test_operand(
     context: &ConversionContext,
     name: &str,
 ) -> Result<(), OnnxError> {
-    use rustnn::DataType;
     use crate::onnx::convert::{map_onnx_data_type, sanitize_identifier};
+    use rustnn::DataType;
 
     let sanitized = sanitize_identifier(name);
     if builder.resolve_operand(name).is_ok() {
@@ -305,7 +348,7 @@ fn register_test_operand(
         let bytes = if let Ok(b) = crate::onnx::builder::tensor_proto_to_bytes(tensor) {
             b
         } else {
-            dummy_constant_bytes(dtype.clone(), numel)
+            dummy_constant_bytes(dtype, numel)
         };
         builder.register_constant_from_bytes(name, dtype, &shape, &bytes)?;
         return Ok(());
@@ -314,7 +357,12 @@ fn register_test_operand(
     let shape = context
         .resolve_shape(name)
         .map(|s| i64_shape_to_dims(s))
-        .unwrap_or_else(|| vec![rustnn::graph::Dimension::Static(2), rustnn::graph::Dimension::Static(2)]);
+        .unwrap_or_else(|| {
+            vec![
+                rustnn::graph::Dimension::Static(2),
+                rustnn::graph::Dimension::Static(2),
+            ]
+        });
     let dtype = context
         .value_types
         .get(name)
@@ -333,13 +381,10 @@ pub fn convert_handler_with_context(
     use crate::onnx::builder::{map_rustnn_error, OnnxBuilder};
     use rustnn::mlcontext::{MLContext, MLContextOptions, MLGraphBuilder, MLPowerPreference};
 
-    let mut ml_context = MLContext::create(&MLContextOptions::new(
-        MLPowerPreference::Default,
-        false,
-    ))
-    .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
-    let mut ml_builder =
-        MLGraphBuilder::new(&mut ml_context).map_err(map_rustnn_error)?;
+    let mut ml_context =
+        MLContext::create(&MLContextOptions::new(MLPowerPreference::Default, false))
+            .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
+    let mut ml_builder = MLGraphBuilder::new(&mut ml_context).map_err(map_rustnn_error)?;
     let mut builder = OnnxBuilder::new(&mut ml_builder);
     for input in node.input.iter() {
         if input.is_empty() {

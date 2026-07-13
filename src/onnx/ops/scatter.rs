@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-use rustnn::DataType;
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::builder_helpers::{output_label, record_node_output};
 use crate::onnx::convert::OnnxError;
-use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
+use crate::onnx::ops::{
+    normalize_axis_best_effort, ConversionContext, ConversionResult, OpHandler,
+};
 use crate::protos::onnx::NodeProto;
+use rustnn::operator_options::MLScatterOptions;
 
 pub struct ScatterHandler;
 
@@ -30,7 +32,7 @@ impl ScatterHandler {
 
 impl OpHandler for ScatterHandler {
     fn supports(&self, op_type: &str) -> bool {
-        op_type == "ScatterND"
+        matches!(op_type, "ScatterND" | "ScatterElements")
     }
 
     fn convert<'a>(
@@ -39,20 +41,21 @@ impl OpHandler for ScatterHandler {
         context: &ConversionContext<'a>,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
+        let op_type = node.op_type.as_str();
         let reduction =
             Self::get_string_attr(node, "reduction").unwrap_or_else(|| "none".to_string());
         if reduction != "none" {
             let node_name = node.name.clone();
-            return Err(OnnxError::UnsupportedOp {
-                op: format!("ScatterND(reduction={reduction})"),
-                node: node_name,
-            });
+            return Err(OnnxError::unsupported_op(
+                format!("{op_type}(reduction={reduction})"),
+                node_name,
+            ));
         }
 
         let inputs = node.input.as_slice();
         if inputs.len() != 3 {
             return Err(OnnxError::InvalidShape(format!(
-                "ScatterND expects 3 inputs (data, indices, updates), got {}",
+                "{op_type} expects 3 inputs (data, indices, updates), got {}",
                 inputs.len()
             )));
         }
@@ -60,7 +63,7 @@ impl OpHandler for ScatterHandler {
         let outputs = node.output.as_slice();
         if outputs.len() != 1 {
             return Err(OnnxError::InvalidShape(format!(
-                "ScatterND expects 1 output, got {}",
+                "{op_type} expects 1 output, got {}",
                 outputs.len()
             )));
         }
@@ -74,19 +77,46 @@ impl OpHandler for ScatterHandler {
         let data = b.resolve_operand(&inputs[0])?;
         let indices = b.resolve_operand(&inputs[1])?;
         let updates = b.resolve_operand(&inputs[2])?;
-        let opts = OnnxBuilder::labeled_options(&output_name);
-        let out = b
-            .builder
-            .scatter_nd_with_options(data, indices, updates, opts)
-            .map_err(map_op_error)?;
+        let out = match op_type {
+            "ScatterND" => {
+                let opts = OnnxBuilder::labeled_options(&output_name);
+                b.builder
+                    .scatter_nd_with_options(data, indices, updates, opts)
+                    .map_err(map_op_error)?
+            }
+            "ScatterElements" => {
+                let mut axis = 0i64;
+                for attr in node.attribute.as_slice() {
+                    if attr.name.as_str() == "axis" && attr.i != 0 {
+                        axis = attr.i;
+                    }
+                }
+                let axis = if let Some(rank) = context.input_rank(inputs[0].as_str()) {
+                    normalize_axis_best_effort(axis, rank)
+                } else {
+                    axis
+                };
+                let opts = MLScatterOptions {
+                    label: output_name.clone(),
+                    axis: axis as u32,
+                };
+                b.builder
+                    .scatter_elements_with_options(data, indices, updates, opts)
+                    .map_err(map_op_error)?
+            }
+            _ => {
+                return Err(OnnxError::unsupported_op(
+                    op_type.to_string(),
+                    node_name.clone(),
+                ));
+            }
+        };
 
         record_node_output(b, &outputs[0], &output_name, out);
 
         let mut result = ConversionResult::default();
         if let Some(dtype) = context.value_types.get(&inputs[0]) {
-            result
-                .output_types
-                .insert(outputs[0].clone(), dtype.clone());
+            result.output_types.insert(outputs[0].clone(), *dtype);
         }
         Ok(result)
     }
@@ -95,8 +125,8 @@ impl OpHandler for ScatterHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustnn::DataType;
     use crate::protos::onnx::{AttributeProto, NodeProto, TensorProto};
+    use rustnn::DataType;
 
     fn create_test_node(op_type: &str, inputs: Vec<&str>, outputs: Vec<&str>) -> NodeProto {
         NodeProto {
@@ -159,8 +189,7 @@ mod tests {
         let node = create_test_node("ScatterND", vec!["data", "indices", "updates"], vec!["y"]);
         let mut tc = TestContext::new();
         tc.value_shapes.insert("data".to_string(), vec![2, 3]);
-        tc.value_shapes
-            .insert("indices".to_string(), vec![2, 1]);
+        tc.value_shapes.insert("indices".to_string(), vec![2, 1]);
         tc.value_shapes.insert("updates".to_string(), vec![2, 3]);
         tc.value_types.insert("data".to_string(), DataType::Float32);
         let result =
@@ -176,7 +205,9 @@ mod tests {
         let tc = TestContext::new();
         let context = tc.ctx();
         match crate::onnx::ops::convert_handler_with_context(&handler, &node, &context) {
-            Err(OnnxError::UnsupportedOp { op, .. }) => assert!(op.contains("reduction=add")),
+            Err(OnnxError::UnsupportedOps(ops)) => {
+                assert!(ops[0].op.contains("reduction=add"));
+            }
             other => panic!("expected UnsupportedOp, got {other:?}"),
         }
     }

@@ -257,14 +257,14 @@ impl CastEvaluator {
                 Ok(TensorData::Int32(v.iter().map(|&x| x as i32).collect()))
             }
 
-            _ => Err(OnnxError::UnsupportedOp {
-                op: "Cast".to_string(),
-                node: format!(
+            _ => Err(OnnxError::unsupported_op(
+                "Cast",
+                format!(
                     "cast from {:?} to {:?} not supported",
                     data.data_type(),
                     target_type
                 ),
-            }),
+            )),
         }
     }
 }
@@ -327,10 +327,10 @@ impl EvaluatorTrait for CastEvaluator {
             7 => TensorProto_DataType::Int64,
             11 => TensorProto_DataType::Double,
             _ => {
-                return Err(OnnxError::UnsupportedOp {
-                    op: "Cast".to_string(),
-                    node: format!("unsupported target type: {}", target_type_i32),
-                })
+                return Err(OnnxError::unsupported_op(
+                    "Cast",
+                    format!("unsupported target type: {}", target_type_i32),
+                ));
             }
         };
 

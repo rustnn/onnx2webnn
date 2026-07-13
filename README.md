@@ -5,7 +5,7 @@ directly to [rustnn](../rustnn) `MLGraphBuilder`; full-graph validation runs via
 `build()` (`onnx-runtime` feature). There is no JSON IR and no on-disk graph export — success
 means `builder.build()` returns `Ok(MLGraph)`.
 
-Supported ONNX opset range: **11–18** (see `MIN_SUPPORTED_OPSET` / `MAX_SUPPORTED_OPSET` in
+Supported ONNX opset range: **1–26** (see `MIN_SUPPORTED_OPSET` / `MAX_SUPPORTED_OPSET` in
 `src/onnx/convert.rs`).
 
 ## Build

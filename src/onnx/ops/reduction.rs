@@ -4,16 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Reduction operators: ReduceMean, ReduceSum, ReduceMax, ReduceMin
+// Reduction operators: Reduce*, ArgMin, ArgMax, CumSum
 
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::builder_helpers::{output_label, record_node_output};
 use crate::onnx::convert::OnnxError;
 use crate::onnx::ops::{
-    normalize_axes_best_effort, ConversionContext, ConversionResult, OpHandler,
+    normalize_axes_best_effort, normalize_axis_best_effort, ConversionContext, ConversionResult,
+    OpHandler,
 };
-use crate::protos::onnx::NodeProto;
-use rustnn::operator_options::MLReduceOptions;
+use crate::protos::onnx::{NodeProto, TensorProto, TensorProto_DataType};
+use rustnn::operator_options::{MLArgMinMaxOptions, MLCumulativeSumOptions, MLReduceOptions};
+use std::collections::HashMap;
 
 pub struct ReductionHandler;
 
@@ -21,7 +23,19 @@ impl OpHandler for ReductionHandler {
     fn supports(&self, op_type: &str) -> bool {
         matches!(
             op_type,
-            "ReduceMean" | "ReduceSum" | "ReduceMax" | "ReduceMin"
+            "ReduceMean"
+                | "ReduceSum"
+                | "ReduceMax"
+                | "ReduceMin"
+                | "ReduceL1"
+                | "ReduceL2"
+                | "ReduceLogSum"
+                | "ReduceLogSumExp"
+                | "ReduceProd"
+                | "ReduceSumSquare"
+                | "ArgMin"
+                | "ArgMax"
+                | "CumSum"
         )
     }
 
@@ -51,10 +65,32 @@ impl OpHandler for ReductionHandler {
             "ReduceMin" => self.convert_reduce(node, &node_name, context, b, |g, i, o| {
                 g.reduce_min_with_options(i, o)
             }),
-            _ => Err(OnnxError::UnsupportedOp {
-                op: op_type.to_string(),
-                node: node_name,
+            "ReduceL1" => self.convert_reduce(node, &node_name, context, b, |g, i, o| {
+                g.reduce_l1_with_options(i, o)
             }),
+            "ReduceL2" => self.convert_reduce(node, &node_name, context, b, |g, i, o| {
+                g.reduce_l2_with_options(i, o)
+            }),
+            "ReduceLogSum" => self.convert_reduce(node, &node_name, context, b, |g, i, o| {
+                g.reduce_log_sum_with_options(i, o)
+            }),
+            "ReduceLogSumExp" => self.convert_reduce(node, &node_name, context, b, |g, i, o| {
+                g.reduce_log_sum_exp_with_options(i, o)
+            }),
+            "ReduceProd" => self.convert_reduce(node, &node_name, context, b, |g, i, o| {
+                g.reduce_product_with_options(i, o)
+            }),
+            "ReduceSumSquare" => self.convert_reduce(node, &node_name, context, b, |g, i, o| {
+                g.reduce_sum_square_with_options(i, o)
+            }),
+            "ArgMin" => self.convert_arg_min_max(node, &node_name, context, b, |g, i, axis, o| {
+                g.arg_min_with_options(i, axis, o)
+            }),
+            "ArgMax" => self.convert_arg_min_max(node, &node_name, context, b, |g, i, axis, o| {
+                g.arg_max_with_options(i, axis, o)
+            }),
+            "CumSum" => self.convert_cum_sum(node, &node_name, context, b),
+            _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
         }
     }
 }
@@ -70,7 +106,8 @@ impl ReductionHandler {
             &mut rustnn::mlgraphbuilder::MLGraphBuilder<'_, '_>,
             rustnn::mlcontext::MLOperand,
             MLReduceOptions,
-        ) -> Result<rustnn::mlcontext::MLOperand, rustnn::error::GraphBuilderError>,
+        )
+            -> Result<rustnn::mlcontext::MLOperand, rustnn::error::GraphBuilderError>,
     ) -> Result<ConversionResult, OnnxError> {
         let inputs = node.input.as_slice();
         if inputs.is_empty() {
@@ -118,6 +155,167 @@ impl ReductionHandler {
         }
         Ok(ConversionResult::default())
     }
+
+    fn convert_arg_min_max(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+        emit: impl FnOnce(
+            &mut rustnn::mlgraphbuilder::MLGraphBuilder<'_, '_>,
+            rustnn::mlcontext::MLOperand,
+            u32,
+            MLArgMinMaxOptions,
+        )
+            -> Result<rustnn::mlcontext::MLOperand, rustnn::error::GraphBuilderError>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.is_empty() {
+            return Err(OnnxError::InvalidShape(format!(
+                "{} expects at least 1 input",
+                node.op_type
+            )));
+        }
+
+        let mut axis = 0i64;
+        let mut keepdims = 1i64;
+        for attr in node.attribute.as_slice() {
+            match attr.name.as_str() {
+                "axis" => axis = attr.i,
+                "keepdims" if attr.i != 0 => keepdims = attr.i,
+                _ => {}
+            }
+        }
+
+        let output_name = output_label(node, node_name);
+        let input = b.resolve_operand(&inputs[0])?;
+        let axis = if let Some(rank) = context.input_rank(inputs[0].as_str()) {
+            normalize_axis_best_effort(axis, rank) as u32
+        } else {
+            axis as u32
+        };
+
+        let opts = MLArgMinMaxOptions {
+            label: output_name.clone(),
+            keep_dimensions: keepdims != 0,
+            ..Default::default()
+        };
+        let out = emit(b.builder, input, axis, opts).map_err(map_op_error)?;
+
+        if let Some(onnx_out) = node.output.first() {
+            record_node_output(b, onnx_out, &output_name, out);
+        } else {
+            b.record_operand(&[&output_name], out);
+        }
+        Ok(ConversionResult::default())
+    }
+
+    fn convert_cum_sum(
+        &self,
+        node: &NodeProto,
+        node_name: &str,
+        context: &ConversionContext,
+        b: &mut OnnxBuilder<'_, '_, '_>,
+    ) -> Result<ConversionResult, OnnxError> {
+        let inputs = node.input.as_slice();
+        if inputs.is_empty() {
+            return Err(OnnxError::InvalidShape(
+                "CumSum expects at least 1 input".to_string(),
+            ));
+        }
+
+        let mut exclusive = false;
+        let mut reversed = false;
+        for attr in node.attribute.as_slice() {
+            match attr.name.as_str() {
+                "exclusive" if attr.i != 0 => exclusive = true,
+                "reverse" if attr.i != 0 => reversed = true,
+                _ => {}
+            }
+        }
+
+        let output_name = output_label(node, node_name);
+        let input = b.resolve_operand(&inputs[0])?;
+        let axis = if inputs.len() > 1 && !inputs[1].is_empty() {
+            read_scalar_i64(&inputs[1], context.initializers, context.const_values)?
+        } else {
+            return Err(OnnxError::InvalidShape(
+                "CumSum requires a constant axis input".to_string(),
+            ));
+        };
+        let axis = if let Some(rank) = context.input_rank(inputs[0].as_str()) {
+            normalize_axis_best_effort(axis, rank) as u32
+        } else {
+            axis as u32
+        };
+
+        let opts = MLCumulativeSumOptions {
+            label: output_name.clone(),
+            exclusive,
+            reversed,
+        };
+        let out = b
+            .builder
+            .cumulative_sum_with_options(input, axis, opts)
+            .map_err(map_op_error)?;
+
+        if let Some(onnx_out) = node.output.first() {
+            record_node_output(b, onnx_out, &output_name, out);
+        } else {
+            b.record_operand(&[&output_name], out);
+        }
+        Ok(ConversionResult::default())
+    }
+}
+
+fn read_scalar_i64(
+    name: &str,
+    initializers: &HashMap<String, &TensorProto>,
+    const_values: &HashMap<String, Vec<i64>>,
+) -> Result<i64, OnnxError> {
+    if let Some(vals) = const_values.get(name) {
+        return vals.first().copied().ok_or_else(|| {
+            OnnxError::InvalidShape(format!("constant tensor '{name}' has no scalar value"))
+        });
+    }
+    if let Some(t) = initializers.get(name) {
+        let vals = read_int64_tensor_proto(t).ok_or_else(|| {
+            OnnxError::InvalidShape(format!("initializer '{name}' has no integer data"))
+        })?;
+        return vals.first().copied().ok_or_else(|| {
+            OnnxError::InvalidShape(format!("initializer '{name}' has no scalar value"))
+        });
+    }
+    Err(OnnxError::InvalidShape(format!(
+        "expected constant scalar tensor '{name}'"
+    )))
+}
+
+fn read_int64_tensor_proto(t: &TensorProto) -> Option<Vec<i64>> {
+    if !t.raw_data.is_empty() {
+        if t.data_type == TensorProto_DataType::Int32 as i32 {
+            return Some(
+                t.raw_data
+                    .chunks_exact(4)
+                    .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
+                    .collect(),
+            );
+        }
+        return Some(
+            t.raw_data
+                .chunks_exact(8)
+                .map(|c| i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+                .collect(),
+        );
+    }
+    if !t.int64_data.is_empty() {
+        return Some(t.int64_data.clone());
+    }
+    if !t.int32_data.is_empty() {
+        return Some(t.int32_data.iter().map(|&v| v as i64).collect());
+    }
+    None
 }
 
 #[cfg(test)]

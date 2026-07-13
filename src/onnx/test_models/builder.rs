@@ -87,6 +87,14 @@ pub fn f16_output(name: &str, shape: &[i64]) -> ValueInfoProto {
     tensor_output(name, TensorProto_DataType::Float16 as i32, shape)
 }
 
+pub fn bf16_input(name: &str, shape: &[i64]) -> ValueInfoProto {
+    tensor_input(name, TensorProto_DataType::Bfloat16 as i32, shape)
+}
+
+pub fn bf16_output(name: &str, shape: &[i64]) -> ValueInfoProto {
+    tensor_output(name, TensorProto_DataType::Bfloat16 as i32, shape)
+}
+
 pub fn i32_input(name: &str, shape: &[i64]) -> ValueInfoProto {
     tensor_input(name, TensorProto_DataType::Int32 as i32, shape)
 }
@@ -164,6 +172,17 @@ pub fn f16_init(name: &str, shape: &[i64], data: &[u16]) -> TensorProto {
         name: name.to_string(),
         dims: shape.to_vec(),
         data_type: TensorProto_DataType::Float16 as i32,
+        raw_data: data.iter().flat_map(|v| v.to_le_bytes()).collect(),
+        ..Default::default()
+    }
+}
+
+/// `bfloat16` initializer. `data` holds the raw 16-bit patterns (little-endian).
+pub fn bf16_init(name: &str, shape: &[i64], data: &[u16]) -> TensorProto {
+    TensorProto {
+        name: name.to_string(),
+        dims: shape.to_vec(),
+        data_type: TensorProto_DataType::Bfloat16 as i32,
         raw_data: data.iter().flat_map(|v| v.to_le_bytes()).collect(),
         ..Default::default()
     }
@@ -346,6 +365,7 @@ pub fn tensor_vi_helper(elem_type: i32, is_output: bool) -> &'static str {
     let base = match elem_type {
         x if x == Float as i32 => "f32",
         x if x == Float16 as i32 => "f16",
+        x if x == Bfloat16 as i32 => "bf16",
         x if x == Int32 as i32 => "i32",
         x if x == Int64 as i32 => "i64",
         x if x == Uint8 as i32 => "u8",
@@ -363,6 +383,7 @@ pub fn tensor_vi_helper(elem_type: i32, is_output: bool) -> &'static str {
         match base {
             "f32" => "f32_output",
             "f16" => "f16_output",
+            "bf16" => "bf16_output",
             "i32" => "i32_output",
             "i64" => "i64_output",
             "u8" => "u8_output",
@@ -374,6 +395,7 @@ pub fn tensor_vi_helper(elem_type: i32, is_output: bool) -> &'static str {
         match base {
             "f32" => "f32_input",
             "f16" => "f16_input",
+            "bf16" => "bf16_input",
             "i32" => "i32_input",
             "i64" => "i64_input",
             "u8" => "u8_input",

@@ -92,10 +92,17 @@ Public exports (`src/lib.rs`):
 - `convert_onnx(path, ConvertOptions) -> Result<ValidatedGraph, OnnxError>`
 - `ConvertOptions`, `OnnxError`, `ValidatedGraph`
 
-Supported ONNX opset range for `ai.onnx`: **9–26** (`MIN_SUPPORTED_OPSET` /
+Supported ONNX opset range for `ai.onnx`: **1–26** (`MIN_SUPPORTED_OPSET` /
 `MAX_SUPPORTED_OPSET` in `src/onnx/convert.rs`). The converter accepts any model
-in that range; per-op integration tests build fixtures at the newest opset in
-range where each operator is still defined (not only opset 26).
+in that range.
+
+Generated integration tests use **model opset ≥ 9** (`MIN_ORT_REFERENCE_OPSET` in
+`scripts/onnx_fixture_builders.py`) so ONNX Runtime can execute the reference path.
+Operators with a single schema revision at or before opset 9 are tested with a
+model at opset 9 (ONNX still resolves them to their sole schema, e.g. `Ceil` v1).
+Operators with multiple pre-9 schema revisions skip sub-opset-9 structure bands
+until legacy attribute normalization lands; newer bands use the true latest schema
+revision in range (e.g. `MaxRoiPool` at model opset 22, `Pad` at 9/17/26).
 
 Operator dispatch and the unsupported-op pre-scan key on **`op_type` only** (standard
 `ai.onnx` domain). Custom-domain ops are not supported yet; adding them requires
@@ -130,7 +137,7 @@ Install: `pip install -r requirements.txt` (from repo root; needs `onnx`, `numpy
 Regenerate conversion tests after changing handlers or the manifest:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\generate_rust_op_conversion_tests.py --min-opset 9 --max-opset 26
+.\.venv\Scripts\python.exe scripts\generate_rust_op_conversion_tests.py --min-opset 1 --max-opset 26
 cargo test --test onnx_op_tests
 ```
 

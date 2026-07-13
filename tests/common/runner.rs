@@ -25,12 +25,16 @@ use rustnn::{run_onnx_with_inputs, OnnxInput, TensorData};
 pub enum ExpectConvertOp {
     Success,
     UnsupportedOp,
+    /// Conversion must fail for a reason other than an unsupported operator — e.g. a data
+    /// type the WebNN mapping cannot represent (`bfloat16`). Used by schema-revision tests
+    /// that exercise a dtype a newer ONNX schema added but WebNN cannot convert.
+    ConversionError,
 }
 
 /// Convert (when supported), execute via rustnn dispatch, and compare against ORT.
 ///
 /// Fixtures are built at the opset declared in `model.opset_import`. The converter
-/// itself accepts any `ai.onnx` opset in the supported range (9–26).
+/// itself accepts any `ai.onnx` opset in the supported range (1–26).
 pub fn assert_op_matches_ort(model: ModelProto, expect: ExpectConvertOp, test_opset: i64) {
     let declared_opset = model
         .opset_import
@@ -48,6 +52,10 @@ pub fn assert_op_matches_ort(model: ModelProto, expect: ExpectConvertOp, test_op
             Err(err) if err.is_unsupported_op() => {}
             Err(err) => panic!("expected UnsupportedOp, got {err}"),
             Ok(_) => panic!("expected UnsupportedOp, got Ok"),
+        },
+        ExpectConvertOp::ConversionError => match result {
+            Err(_) => {}
+            Ok(_) => panic!("expected conversion failure, got Ok"),
         },
         ExpectConvertOp::Success => {
             let mut validated =

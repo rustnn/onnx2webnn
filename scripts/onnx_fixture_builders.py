@@ -100,8 +100,14 @@ def _is_variadic(param) -> bool:
     return param.option.name == "Variadic"
 
 
-MIN_SUPPORTED_OPSET = 9
+MIN_SUPPORTED_OPSET = 1
 MAX_SUPPORTED_OPSET = 26
+# Integration tests compare against ONNX Runtime; ORT has no kernels for most ops below
+# model opset 9. Single-schema operators introduced at opset <= 9 are still exercised by
+# building a model at opset 9 (ONNX resolves them to their sole schema revision).
+MIN_ORT_REFERENCE_OPSET = 9
+# Default floor for test discovery / generation (--min-opset).
+MIN_TEST_DISCOVERY_OPSET = MIN_ORT_REFERENCE_OPSET
 
 
 def _all_onnx_op_names() -> list[str]:
@@ -153,41 +159,100 @@ def _schema_revisions_for_op(op_type: str) -> list:
 
 def _schema_structure_bands(
     op_type: str, max_version: int
-) -> list[tuple[tuple, int, int]]:
-    """Merge consecutive ONNX schema revisions with the same structure into bands."""
+) -> list[tuple[tuple, int, int, int]]:
+    """Merge consecutive ONNX schema revisions with the same structure into bands.
+
+    Each band is ``(fingerprint, first_since, last_since, band_end)`` where ``first_since``
+    is the opset that introduced the structure and ``last_since`` is the newest ONNX schema
+    revision (``since_version``) folded into the band. Type-constraint-only bumps (e.g. the
+    opset-22 dtype additions) share a structural fingerprint with the prior revision, so they
+    merge into one band but still advance ``last_since`` — this lets callers label a fixture
+    with the operator's true latest schema version instead of the top of the opset range.
+    """
     revisions = _schema_revisions_for_op(op_type)
     if not revisions:
         return []
-    bands: list[tuple[tuple, int, int]] = []
+    bands: list[tuple[tuple, int, int, int]] = []
     for i, rev in enumerate(revisions):
         fp = _schema_fingerprint(rev)
         sv = rev.since_version
         end = revisions[i + 1].since_version - 1 if i + 1 < len(revisions) else max_version
         if bands and bands[-1][0] == fp:
-            bands[-1] = (fp, bands[-1][1], end)
+            first = bands[-1][1]
+            bands[-1] = (fp, first, sv, end)
         else:
-            bands.append((fp, sv, end))
+            bands.append((fp, sv, sv, end))
     return bands
+
+
+def _schema_revisions_through(op_type: str, version: int) -> list:
+    return [
+        revision
+        for revision in _schema_revisions_for_op(op_type)
+        if revision.since_version <= version
+    ]
+
+
+def _model_opset_candidates_for_band(
+    op_type: str,
+    first_since: int,
+    last_since: int,
+    band_end: int,
+    min_version: int,
+    max_version: int,
+) -> list[int]:
+    """Model opsets to try for one structure band (ORT-validated fixtures only).
+
+    - Single schema revision at or before opset 9: build model at opset 9 so ORT can run
+      while ONNX still resolves the operator to its only pre-9 schema (e.g. Ceil v1).
+    - Multiple pre-9 revisions: skip bands whose model opset would be < 9 until the
+      converter can normalize legacy attribute forms (Pad-1, Add-6, …).
+    - Otherwise: use the band's true latest schema revision, raised to at least opset 9.
+    """
+    lo = max(first_since, min_version)
+    hi = min(band_end, max_version)
+    if lo > hi:
+        return []
+
+    single_schema_through_9 = len(_schema_revisions_through(op_type, 9)) == 1
+    if single_schema_through_9 and last_since <= 9:
+        model_opset = max(lo, MIN_ORT_REFERENCE_OPSET)
+        if model_opset <= hi:
+            return [model_opset]
+        return []
+
+    if hi < MIN_ORT_REFERENCE_OPSET:
+        return []
+
+    preferred_schema = min(max(last_since, lo), hi)
+    model_opset = min(max(preferred_schema, MIN_ORT_REFERENCE_OPSET), hi)
+
+    candidates: list[int] = []
+    for opset in (model_opset, hi, max(lo, MIN_ORT_REFERENCE_OPSET)):
+        if lo <= opset <= hi and opset not in candidates:
+            candidates.append(opset)
+    return candidates
 
 
 def fixture_opsets_for_op(
     op_type: str, min_version: int, max_version: int
 ) -> list[int]:
-    """Return opsets to test: one per distinct ONNX schema structure in range.
+    """Return model opsets to test: one per distinct ONNX schema structure in range.
 
-    For each structure band (e.g. Pad with ``pads`` attribute vs ``pads`` input), pick the
-    highest buildable opset in ``[min_version, max_version]`` that still uses that structure.
-    Falls back to the band's ``since_version`` when the high end is not buildable.
+    Each returned opset is the **model** ``opset_import`` version embedded in the fixture
+    (not necessarily the operator's ``since_version``). Labels follow the model opset so
+    tests stay aligned with what ORT executes. Type-constraint-only bumps still merge into
+    one structure band but advance ``last_since`` for schema selection inside the band.
     """
     buildable: list[int] = []
-    for _fp, since_version, band_end in _schema_structure_bands(op_type, max_version):
-        if band_end < min_version or since_version > max_version:
+    for _fp, first_since, last_since, band_end in _schema_structure_bands(
+        op_type, max_version
+    ):
+        if band_end < min_version or first_since > max_version:
             continue
-        lo = max(since_version, min_version)
-        hi = min(band_end, max_version)
-        if lo > hi:
-            continue
-        for opset in (hi, lo):
+        for opset in _model_opset_candidates_for_band(
+            op_type, first_since, last_since, band_end, min_version, max_version
+        ):
             try:
                 build_test_model(op_type, opset)
                 buildable.append(opset)
@@ -771,6 +836,101 @@ def _convert_float_fixture_to_float16(model: ModelProto, op_type: str, opset: in
     return model
 
 
+def _to_bfloat16_tensor(tensor: TensorProto) -> None:
+    """Rewrite a float32 initializer in place as bfloat16 (raw 16-bit patterns).
+
+    numpy has no native bfloat16 dtype, so we truncate the float32 bit pattern to its
+    high 16 bits and store the result as ``raw_data``. Fixture values are never executed
+    (bfloat16 fixtures assert a conversion failure), so truncation is sufficient.
+    """
+    arr = np.ascontiguousarray(numpy_helper.to_array(tensor).astype(np.float32))
+    bits = (arr.view(np.uint32) >> 16).astype("<u2")
+    converted = TensorProto()
+    converted.name = tensor.name
+    converted.data_type = TensorProto.BFLOAT16
+    converted.dims.extend(int(d) for d in arr.shape)
+    converted.raw_data = bits.tobytes()
+    tensor.CopyFrom(converted)
+
+
+def _convert_float_fixture_to_bfloat16(model: ModelProto, op_type: str, opset: int) -> ModelProto:
+    eligible = _fp16_eligible_names(model, op_type, opset)
+    if not eligible:
+        raise ValueError(f"{op_type} fixture has no bfloat16-eligible tensor values")
+    graph = model.graph
+    if graph is None:
+        raise ValueError("model missing graph")
+
+    for value_info in [*graph.input, *graph.output, *graph.value_info]:
+        if value_info.name in eligible and value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
+            _set_value_info_elem_type(value_info, TensorProto.BFLOAT16)
+    for initializer in graph.initializer:
+        if initializer.name in eligible and initializer.data_type == TensorProto.FLOAT:
+            _to_bfloat16_tensor(initializer)
+    for node in graph.node:
+        if op_type == "Cast":
+            for attr in node.attribute:
+                if attr.name == "to":
+                    attr.i = TensorProto.BFLOAT16
+        if any(name in eligible for name in node.output):
+            for attr in node.attribute:
+                if attr.HasField("t") and attr.t.data_type == TensorProto.FLOAT:
+                    _to_bfloat16_tensor(attr.t)
+
+    checker.check_model(model)
+    return model
+
+
+def _primary_input_type_str(schema) -> str | None:
+    for param in schema.inputs:
+        return param.type_str
+    return None
+
+
+def _schema_allows_bfloat16(schema) -> bool:
+    """True when the primary input's type constraint admits ``tensor(bfloat16)``."""
+    type_param = _primary_input_type_str(schema)
+    if type_param is None:
+        return False
+    for constraint in schema.type_constraints:
+        if constraint.type_param_str == type_param:
+            return any("bfloat16" in t.lower() for t in constraint.allowed_type_strs)
+    return False
+
+
+def bfloat16_introduced_opset(
+    op_type: str, min_version: int, max_version: int
+) -> int | None:
+    """Model opset at which ``op_type`` first admits bfloat16 on its primary input.
+
+    Returns ``None`` when no schema revision in range widens the primary input to
+    bfloat16 (or a later revision drops it again). WebNN cannot represent bfloat16, so
+    callers use this to emit a negative (conversion-failure) fixture at that opset.
+    """
+    revisions = _schema_revisions_for_op(op_type)
+    if not revisions:
+        return None
+    introduced: int | None = None
+    for rev in revisions:
+        if rev.since_version > max_version:
+            continue
+        if _schema_allows_bfloat16(rev):
+            introduced = rev.since_version
+            break
+    if introduced is None:
+        return None
+    latest = None
+    for rev in revisions:
+        if rev.since_version <= max_version:
+            latest = rev
+    if latest is None or not _schema_allows_bfloat16(latest):
+        return None
+    model_opset = max(introduced, min_version)
+    if model_opset > max_version:
+        return None
+    return model_opset
+
+
 def build_test_model(
     op_type: str, opset: int, *, input_elem_type: int = TensorProto.FLOAT
 ) -> ModelProto:
@@ -778,7 +938,12 @@ def build_test_model(
         model = CUSTOM_BUILDERS[op_type](opset)
         if input_elem_type == TensorProto.FLOAT16:
             return _convert_float_fixture_to_float16(model, op_type, opset)
+        if input_elem_type == TensorProto.BFLOAT16:
+            return _convert_float_fixture_to_bfloat16(model, op_type, opset)
         return model
+    if input_elem_type == TensorProto.BFLOAT16:
+        model = _build_generic(op_type, opset, input_elem_type=TensorProto.FLOAT)
+        return _convert_float_fixture_to_bfloat16(model, op_type, opset)
     return _build_generic(op_type, opset, input_elem_type=input_elem_type)
 
 

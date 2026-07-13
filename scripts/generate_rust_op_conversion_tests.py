@@ -21,6 +21,8 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from onnx_fixture_builders import (
     MAX_SUPPORTED_OPSET,
     MIN_SUPPORTED_OPSET,
+    MIN_TEST_DISCOVERY_OPSET,
+    bfloat16_introduced_opset,
     build_test_model,
     fixture_opsets_for_op,
     ops_in_opset_range,
@@ -31,7 +33,7 @@ from webnn_onnx_ops import is_webnn_supported_op
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ONNX_OPS_DIR = PROJECT_ROOT / "tests" / "onnx_ops"
 ONNX_OPS_ENTRY = PROJECT_ROOT / "tests" / "onnx_op_tests.rs"
-DEFAULT_MIN_OPSET = MIN_SUPPORTED_OPSET
+DEFAULT_MIN_OPSET = MIN_TEST_DISCOVERY_OPSET
 DEFAULT_MAX_OPSET = MAX_SUPPORTED_OPSET
 
 _RUST_SPDX_HEADER = """\
@@ -374,6 +376,8 @@ def _expect_rust(expect_convert_op: str) -> str:
         return "ExpectConvertOp::Success"
     if expect_convert_op == "unsupported_op":
         return "ExpectConvertOp::UnsupportedOp"
+    if expect_convert_op == "conversion_error":
+        return "ExpectConvertOp::ConversionError"
     raise ValueError(f"unknown expect_convert_op: {expect_convert_op}")
 
 
@@ -476,7 +480,7 @@ def _emit_unbuildable_op_file(*, op_type: str) -> str:
         op_type=op_type,
         variants=[
             {
-                "opset": MIN_SUPPORTED_OPSET,
+                "opset": MIN_TEST_DISCOVERY_OPSET,
                 "expect": "ExpectConvertOp::UnsupportedOp",
                 "build_error": "no buildable fixture opset in supported range",
             }
@@ -510,6 +514,13 @@ def _format_generated_rust(paths: list[Path]) -> None:
 
 def _should_emit_float16_variant(op_type: str, expect: str) -> bool:
     return expect == "ExpectConvertOp::Success" and op_type not in _FP16_EXCLUDED_OPS
+
+
+def _should_emit_bfloat16_variant(expect: str) -> bool:
+    # WebNN cannot represent bfloat16, so a bfloat16 fixture asserts a conversion failure.
+    # Only meaningful for ops we otherwise convert successfully; unsupported ops already
+    # fail regardless of dtype.
+    return expect == "ExpectConvertOp::Success"
 
 
 def generate(*, min_opset: int, max_opset: int) -> tuple[int, int, int]:
@@ -576,6 +587,27 @@ def generate(*, min_opset: int, max_opset: int) -> tuple[int, int, int]:
                 # Not every WebNN-supported op has a meaningful fp16 ONNX fixture
                 # (e.g. concrete tensor(float) control inputs). Keep generation quiet.
                 pass
+
+        if _should_emit_bfloat16_variant(expect):
+            bf16_opset = bfloat16_introduced_opset(op_type, min_opset, max_opset)
+            if bf16_opset is not None:
+                try:
+                    model = build_test_model(
+                        op_type, bf16_opset, input_elem_type=TensorProto.BFLOAT16
+                    )
+                    variants.append(
+                        {
+                            "opset": bf16_opset,
+                            "expect": "ExpectConvertOp::ConversionError",
+                            "model": model,
+                            "dtype_suffix": "bfloat16",
+                        }
+                    )
+                    built += 1
+                except Exception:
+                    # Skip ops whose primary input can't carry a standalone bfloat16
+                    # fixture (e.g. bool/int-keyed primary inputs, unbuildable schemas).
+                    pass
 
         content = _emit_op_file(op_type=op_type, variants=variants)
         out_file.write_text(content, encoding="utf-8")

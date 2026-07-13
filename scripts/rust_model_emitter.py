@@ -62,6 +62,14 @@ def _tensor_dims(tensor: TensorProto) -> list[int]:
 def _emit_initializer(init: TensorProto, *, indent: str) -> str:
     name = _escape_rust_str(init.name)
     shape = _format_i64_list(_tensor_dims(init))
+
+    if init.data_type == TensorProto.BFLOAT16:
+        # numpy lacks a native bfloat16 dtype; read the raw 16-bit patterns directly so we
+        # never route bfloat16 through numpy_helper.to_array (which needs ml_dtypes).
+        bits = np.frombuffer(init.raw_data, dtype="<u2")
+        data = _format_u16_list([int(v) for v in bits.tolist()])
+        return f'{indent}bf16_init("{name}", {shape}, {data}),'
+
     arr = numpy_helper.to_array(init)
 
     if init.data_type == TensorProto.FLOAT:
@@ -132,6 +140,7 @@ def _emit_value_info(vi, *, indent: str, is_output: bool) -> str:
         mapping = {
             TensorProto.FLOAT: "f32",
             TensorProto.FLOAT16: "f16",
+            TensorProto.BFLOAT16: "bf16",
             TensorProto.INT8: "i8",
             TensorProto.INT32: "i32",
             TensorProto.INT64: "i64",

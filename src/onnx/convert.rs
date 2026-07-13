@@ -42,7 +42,7 @@ pub struct ValidatedGraph<'ctx> {
     pub graph: MLGraph<'ctx>,
 }
 
-const MIN_SUPPORTED_OPSET: i64 = 9;
+const MIN_SUPPORTED_OPSET: i64 = 1;
 const MAX_SUPPORTED_OPSET: i64 = 26;
 
 /// ONNX ops that lower to WebNN element-wise logical ops and must emit `uint8` outputs.

@@ -7,7 +7,7 @@
 //! ONNX → [`MLGraphBuilder`] bridge (operand map, naming, rustnn error mapping).
 
 use crate::onnx::convert::{map_onnx_data_type, sanitize_identifier, OnnxError};
-use crate::protos::onnx::TensorProto;
+use crate::protos::onnx::{TensorProto, TensorProto_DataType};
 use rustnn::error::{Error as RustnnError, GraphBuilderError};
 use rustnn::graph::Dimension;
 use rustnn::mlcontext::MLOperandDescriptor;
@@ -310,11 +310,30 @@ pub fn tensor_proto_to_bytes(tensor: &TensorProto) -> Result<Vec<u8>, OnnxError>
             .collect());
     }
     if !tensor.int32_data.is_empty() {
-        return Ok(tensor
-            .int32_data
-            .iter()
-            .flat_map(|v| v.to_le_bytes())
-            .collect());
+        return Ok(match tensor.data_type {
+            x if x == TensorProto_DataType::Uint8 as i32
+                || x == TensorProto_DataType::Int8 as i32
+                || x == TensorProto_DataType::Bool as i32 =>
+            {
+                tensor.int32_data.iter().map(|&v| v as u8).collect()
+            }
+            x if x == TensorProto_DataType::Float16 as i32
+                || x == TensorProto_DataType::Bfloat16 as i32
+                || x == TensorProto_DataType::Uint16 as i32
+                || x == TensorProto_DataType::Int16 as i32 =>
+            {
+                tensor
+                    .int32_data
+                    .iter()
+                    .flat_map(|&v| (v as u16).to_le_bytes())
+                    .collect()
+            }
+            _ => tensor
+                .int32_data
+                .iter()
+                .flat_map(|v| v.to_le_bytes())
+                .collect(),
+        });
     }
     if !tensor.int64_data.is_empty() {
         return Ok(tensor
@@ -350,8 +369,8 @@ mod tests {
 
     #[test]
     fn test_empty_optional_tensor_proto_to_bytes() {
-        use crate::protos::onnx::{TensorProto, TensorProto_DataType};
         use super::{tensor_element_count, tensor_proto_to_bytes};
+        use crate::protos::onnx::{TensorProto, TensorProto_DataType};
 
         let tensor = TensorProto {
             name: String::new(),
@@ -363,6 +382,20 @@ mod tests {
         assert_eq!(tensor_element_count(&tensor), 0);
         let bytes = tensor_proto_to_bytes(&tensor).expect("empty tensor should be valid");
         assert!(bytes.is_empty());
+    }
+
+    #[test]
+    fn test_uint8_scalar_int32_payload_uses_one_byte() {
+        use super::tensor_proto_to_bytes;
+        use crate::protos::onnx::{TensorProto, TensorProto_DataType};
+
+        let tensor = TensorProto {
+            name: "zero_point".to_string(),
+            data_type: TensorProto_DataType::Uint8 as i32,
+            int32_data: vec![127],
+            ..Default::default()
+        };
+        assert_eq!(tensor_proto_to_bytes(&tensor).unwrap(), vec![127]);
     }
 
     #[test]

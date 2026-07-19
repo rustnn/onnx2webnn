@@ -82,7 +82,7 @@ cargo run -- convert --input model.onnx `
 | `--experimental-dynamic-inputs` | `ConvertOptions::experimental_dynamic_inputs` | Preserve unresolved symbolic input dims as dynamic metadata |
 | `--debug` | global | Enable conversion debug output (`src/debug.rs`) |
 
-Success prints `✓ ORT graph build succeeded for …` to stderr. There is no `--output` flag in
+Success prints `✓ ORT graph build succeeded for …` to stdout. There is no `--output` flag in
 the committed CLI — validation only.
 
 ## Library API

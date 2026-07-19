@@ -116,17 +116,10 @@ fn resolve_spatial_resample_params(
         let sizes = read_int64_sizes(name, context).ok_or_else(|| {
             OnnxError::InvalidShape(format!("Resize sizes value '{name}' not found"))
         })?;
-        if let Some(input_shape) = input_shape {
-            if input_shape.len() == 4 {
-                if axes.iter().all(|&axis| input_shape[axis] > 0) {
-                    let scales = spatial_scales_from_sizes(input_shape, axes, &sizes)?;
-                    return Ok((scales, None));
-                }
-            } else {
-                return Err(OnnxError::unsupported_op("Resize", node.name.as_str()));
-            }
-        }
         if sizes.len() == 4 {
+            // Preserve explicit ONNX output sizes. Deriving scales from inferred
+            // input shapes is unnecessary and can be wrong when an earlier
+            // best-effort shape pass was later refined.
             let spatial_sizes: Vec<u32> = axes
                 .iter()
                 .map(|&axis| u32::try_from(sizes[axis].max(1)).unwrap_or(1))
@@ -139,9 +132,8 @@ fn resolve_spatial_resample_params(
         )));
     }
 
-    let input_shape = input_shape.ok_or_else(|| {
-        OnnxError::InvalidShape("Resize input shape is unknown".to_string())
-    })?;
+    let input_shape = input_shape
+        .ok_or_else(|| OnnxError::InvalidShape("Resize input shape is unknown".to_string()))?;
     if input_shape.len() != 4 {
         return Err(OnnxError::unsupported_op("Resize", node.name.as_str()));
     }
@@ -339,7 +331,7 @@ mod tests {
     #[test]
     fn test_convert_resize_sizes() {
         let handler = ResizeHandler;
-        let node = create_resize_node(vec!["X", "", "sizes"], "nearest");
+        let node = create_resize_node(vec!["X", "", "", "sizes"], "nearest");
 
         let sizes_tensor = TensorProto {
             name: "sizes".to_string(),
@@ -363,6 +355,9 @@ mod tests {
             value_types: &HashMap::new(),
         };
 
+        let (scales, sizes) = resolve_spatial_resample_params(&node, &context, &[2, 3]).unwrap();
+        assert_eq!(scales, vec![1.0, 1.0]);
+        assert_eq!(sizes, Some(vec![6, 6]));
         crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();
     }
 }

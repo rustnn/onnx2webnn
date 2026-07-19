@@ -133,7 +133,8 @@ fn main() -> anyhow::Result<()> {
 
             let _validated = convert_onnx(input_path.to_str().unwrap(), options)
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
-            eprintln!("✓ ORT graph build succeeded for {}", input);
+            // stdout (not stderr): PowerShell treats native stderr as NativeCommandError
+            println!("✓ ORT graph build succeeded for {}", input);
         }
     }
 

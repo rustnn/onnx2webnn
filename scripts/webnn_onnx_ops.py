@@ -13,6 +13,7 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         # conv.rs
         "Conv",
         "ConvTranspose",
+        "ConvInteger",
         # pool.rs
         "MaxPool",
         "AveragePool",
@@ -67,6 +68,7 @@ WEBNN_SUPPORTED_ONNX_OPS: frozenset[str] = frozenset(
         "Constant",
         "QuantizeLinear",
         "DequantizeLinear",
+        "DynamicQuantizeLinear",
         # utility.rs
         "Shape",
         "Gather",

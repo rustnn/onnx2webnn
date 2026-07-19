@@ -77,6 +77,16 @@ impl ConversionHandler {
             });
         }
 
+        // Empty optional placeholders (e.g. Resize roi/scales) propagate without WebNN ops.
+        if b.is_empty_optional(&inputs[0]) {
+            let output_name = output_label(node, node_name);
+            b.mark_empty_optional(&output_name);
+            if let Some(onnx_out) = node.output.first() {
+                b.mark_empty_optional(onnx_out);
+            }
+            return Ok(ConversionResult::default());
+        }
+
         let output_name = output_label(node, node_name);
         let input = b.resolve_operand(&inputs[0])?;
         let target_type = map_onnx_tensor_type(to_type.unwrap() as i32)?;
@@ -160,6 +170,13 @@ impl ConversionHandler {
                 attr: "value".to_string(),
                 op: "Constant".to_string(),
             })?;
+
+        // Zero-element tensors are optional-input placeholders (common for Resize).
+        // WebNN rejects 0-sized dimensions, so keep them as logical absences.
+        if crate::onnx::builder::tensor_element_count(tensor) == 0 {
+            b.mark_empty_optional(onnx_out);
+            return Ok(ConversionResult::default());
+        }
 
         let data_type = crate::onnx::convert::map_onnx_data_type(tensor.data_type)?;
         let shape: Vec<u32> = tensor.dims.iter().map(|&d| d.max(0) as u32).collect();

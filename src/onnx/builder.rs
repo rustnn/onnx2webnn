@@ -7,7 +7,7 @@
 //! ONNX → [`MLGraphBuilder`] bridge (operand map, naming, rustnn error mapping).
 
 use crate::onnx::convert::{map_onnx_data_type, sanitize_identifier, OnnxError};
-use crate::protos::onnx::TensorProto;
+use crate::protos::onnx::{TensorProto, TensorProto_DataType};
 use rustnn::error::{Error as RustnnError, GraphBuilderError};
 use rustnn::graph::Dimension;
 use rustnn::mlcontext::MLOperandDescriptor;
@@ -26,6 +26,9 @@ pub struct OnnxBuilder<'a, 'ctx, 'bld> {
     constant_operands: HashSet<u32>,
     /// Sanitized + raw ONNX names registered as graph inputs.
     input_names: HashSet<String>,
+    /// Zero-element optional-input placeholders (e.g. empty `Resize` roi/scales).
+    /// These are not materialized as WebNN constants because 0-sized dims are invalid.
+    empty_optional_values: HashSet<String>,
 }
 
 /// Operand index inside the builder graph (`MLOperand::id` is `pub(crate)` in rustnn).
@@ -47,11 +50,41 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
             input_operands: HashSet::new(),
             constant_operands: HashSet::new(),
             input_names: HashSet::new(),
+            empty_optional_values: HashSet::new(),
         }
     }
 
     pub fn webnn_id(onnx_name: &str) -> String {
         sanitize_identifier(onnx_name)
+    }
+
+    fn insert_name_aliases(set: &mut HashSet<String>, name: &str) {
+        if name.is_empty() {
+            return;
+        }
+        set.insert(name.to_string());
+        set.insert(sanitize_identifier(name));
+        let trimmed = name.trim_start_matches('/');
+        if trimmed != name {
+            set.insert(trimmed.to_string());
+        }
+    }
+
+    /// Record a zero-element optional-input placeholder that must not become a WebNN constant.
+    pub fn mark_empty_optional(&mut self, name: &str) {
+        Self::insert_name_aliases(&mut self.empty_optional_values, name);
+    }
+
+    pub fn is_empty_optional(&self, name: &str) -> bool {
+        if self.empty_optional_values.contains(name) {
+            return true;
+        }
+        let sanitized = sanitize_identifier(name);
+        if self.empty_optional_values.contains(&sanitized) {
+            return true;
+        }
+        let trimmed = name.trim_start_matches('/');
+        self.empty_optional_values.contains(trimmed)
     }
 
     pub fn record_operand(&mut self, keys: &[&str], op: MLOperand) {
@@ -66,6 +99,11 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
     }
 
     pub fn resolve_operand(&self, name: &str) -> Result<MLOperand, OnnxError> {
+        if self.is_empty_optional(name) {
+            return Err(OnnxError::InvalidShape(format!(
+                "ONNX value '{name}' is an empty optional-input placeholder and has no WebNN operand"
+            )));
+        }
         if let Some(&op) = self.operands.get(name) {
             return Ok(op);
         }
@@ -244,6 +282,21 @@ pub fn map_onnx_tensor_type(onnx_type: i32) -> Result<MLOperandDataType, OnnxErr
     map_ast_data_type(map_onnx_data_type(onnx_type)?)
 }
 
+/// Number of elements implied by `TensorProto.dims`.
+///
+/// An empty `dims` list is treated as a scalar (1 element). A dimension of `0`
+/// yields an empty tensor (0 elements), which ONNX exporters commonly use as a
+/// placeholder for unused optional inputs such as `Resize`'s `roi`/`scales`.
+pub fn tensor_element_count(tensor: &TensorProto) -> usize {
+    if tensor.dims.is_empty() {
+        return 1;
+    }
+    tensor
+        .dims
+        .iter()
+        .fold(1usize, |acc, &d| acc.saturating_mul(d.max(0) as usize))
+}
+
 /// Extract initializer / constant tensor bytes for `constant_from_slice`.
 pub fn tensor_proto_to_bytes(tensor: &TensorProto) -> Result<Vec<u8>, OnnxError> {
     if !tensor.raw_data.is_empty() {
@@ -257,11 +310,30 @@ pub fn tensor_proto_to_bytes(tensor: &TensorProto) -> Result<Vec<u8>, OnnxError>
             .collect());
     }
     if !tensor.int32_data.is_empty() {
-        return Ok(tensor
-            .int32_data
-            .iter()
-            .flat_map(|v| v.to_le_bytes())
-            .collect());
+        return Ok(match tensor.data_type {
+            x if x == TensorProto_DataType::Uint8 as i32
+                || x == TensorProto_DataType::Int8 as i32
+                || x == TensorProto_DataType::Bool as i32 =>
+            {
+                tensor.int32_data.iter().map(|&v| v as u8).collect()
+            }
+            x if x == TensorProto_DataType::Float16 as i32
+                || x == TensorProto_DataType::Bfloat16 as i32
+                || x == TensorProto_DataType::Uint16 as i32
+                || x == TensorProto_DataType::Int16 as i32 =>
+            {
+                tensor
+                    .int32_data
+                    .iter()
+                    .flat_map(|&v| (v as u16).to_le_bytes())
+                    .collect()
+            }
+            _ => tensor
+                .int32_data
+                .iter()
+                .flat_map(|v| v.to_le_bytes())
+                .collect(),
+        });
     }
     if !tensor.int64_data.is_empty() {
         return Ok(tensor
@@ -277,6 +349,10 @@ pub fn tensor_proto_to_bytes(tensor: &TensorProto) -> Result<Vec<u8>, OnnxError>
             .flat_map(|v| v.to_le_bytes())
             .collect());
     }
+    // Empty optional-input placeholders: dims contain a 0, so there is no payload.
+    if tensor_element_count(tensor) == 0 {
+        return Ok(Vec::new());
+    }
     Err(OnnxError::InvalidShape(format!(
         "tensor '{}' has no payload",
         tensor.name
@@ -290,6 +366,37 @@ mod tests {
         tensor_shape_proto, type_proto, GraphProto, ModelProto, NodeProto, TensorProto_DataType,
         TensorShapeProto, ValueInfoProto,
     };
+
+    #[test]
+    fn test_empty_optional_tensor_proto_to_bytes() {
+        use super::{tensor_element_count, tensor_proto_to_bytes};
+        use crate::protos::onnx::{TensorProto, TensorProto_DataType};
+
+        let tensor = TensorProto {
+            name: String::new(),
+            dims: vec![0],
+            data_type: TensorProto_DataType::Float16 as i32,
+            raw_data: Vec::new(),
+            ..Default::default()
+        };
+        assert_eq!(tensor_element_count(&tensor), 0);
+        let bytes = tensor_proto_to_bytes(&tensor).expect("empty tensor should be valid");
+        assert!(bytes.is_empty());
+    }
+
+    #[test]
+    fn test_uint8_scalar_int32_payload_uses_one_byte() {
+        use super::tensor_proto_to_bytes;
+        use crate::protos::onnx::{TensorProto, TensorProto_DataType};
+
+        let tensor = TensorProto {
+            name: "zero_point".to_string(),
+            data_type: TensorProto_DataType::Uint8 as i32,
+            int32_data: vec![127],
+            ..Default::default()
+        };
+        assert_eq!(tensor_proto_to_bytes(&tensor).unwrap(), vec![127]);
+    }
 
     #[test]
     fn test_add_ort_build_succeeds() {

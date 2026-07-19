@@ -480,6 +480,14 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 || !initializer.int64_data.as_slice().is_empty()
                 || !initializer.double_data.as_slice().is_empty();
 
+            // Zero-element tensors are optional-input placeholders (often produced when
+            // empty Constant nodes are folded into initializers). Track them so Cast/Resize
+            // can treat them as absent without materializing invalid WebNN 0-sized dims.
+            if crate::onnx::builder::tensor_element_count(initializer) == 0 {
+                b.mark_empty_optional(initializer.name.as_str());
+                continue;
+            }
+
             if !has_data {
                 crate::debug_println!("Warning: Skipping initializer '{}' with no data", name);
                 continue;

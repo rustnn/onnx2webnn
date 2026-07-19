@@ -286,7 +286,11 @@ vs inference export).
 
 | Operators | Reason |
 |-----------|--------|
-| ConvInteger, MatMulInteger, QLinearConv, QLinearMatMul, DynamicQuantizeLinear | Integer conv/matmul not in WebNN; use float + QuantizeLinear path separately |
+| MatMulInteger, QLinearConv, QLinearMatMul | Integer matmul / fused quantized ops not in WebNN; use explicit float + quantization decomposition |
+
+`ConvInteger` is supported through centered float `conv2d` followed by an `int32` cast, and
+`DynamicQuantizeLinear` is decomposed into reductions, scale/zero-point arithmetic, and WebNN
+`quantizeLinear`.
 
 #### 3i. Bitwise and type reinterpretation
 

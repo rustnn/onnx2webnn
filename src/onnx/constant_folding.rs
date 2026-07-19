@@ -82,6 +82,7 @@ impl TensorData {
     pub fn from_tensor_proto(tensor: &TensorProto) -> Result<Self, OnnxError> {
         let raw_data = tensor.raw_data.as_slice();
         let data_type = tensor.data_type;
+        let empty = crate::onnx::builder::tensor_element_count(tensor) == 0;
 
         if !raw_data.is_empty() {
             // Parse from raw bytes
@@ -124,12 +125,36 @@ impl TensorData {
                 x if x == TensorProto_DataType::Int8 as i32 => Ok(TensorData::Int8(
                     raw_data.iter().map(|&x| x as i8).collect(),
                 )),
+                // Float16 empty optional placeholders have no typed field; treat as empty f32.
+                x if x == TensorProto_DataType::Float16 as i32 && empty => {
+                    Ok(TensorData::Float32(Vec::new()))
+                }
                 _ => Err(OnnxError::TypeConversion(
                     webnn_onnx_utils::error::ConversionError::UnsupportedOnnxDataType(data_type),
                 )),
             }
         } else {
-            // Parse from typed data fields
+            // Parse from typed data fields. Empty tensors (dims contain 0) are valid
+            // optional-input placeholders and have no payload.
+            if empty {
+                return match data_type {
+                    x if x == TensorProto_DataType::Int64 as i32 => Ok(TensorData::Int64(Vec::new())),
+                    x if x == TensorProto_DataType::Int32 as i32 => Ok(TensorData::Int32(Vec::new())),
+                    x if x == TensorProto_DataType::Float as i32
+                        || x == TensorProto_DataType::Float16 as i32 =>
+                    {
+                        Ok(TensorData::Float32(Vec::new()))
+                    }
+                    x if x == TensorProto_DataType::Double as i32 => {
+                        Ok(TensorData::Float64(Vec::new()))
+                    }
+                    x if x == TensorProto_DataType::Uint8 as i32 => Ok(TensorData::UInt8(Vec::new())),
+                    x if x == TensorProto_DataType::Int8 as i32 => Ok(TensorData::Int8(Vec::new())),
+                    _ => Err(OnnxError::TypeConversion(
+                        webnn_onnx_utils::error::ConversionError::UnsupportedOnnxDataType(data_type),
+                    )),
+                };
+            }
             match data_type {
                 x if x == TensorProto_DataType::Int64 as i32 => {
                     Ok(TensorData::Int64(tensor.int64_data.as_slice().to_vec()))

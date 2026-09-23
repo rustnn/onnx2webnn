@@ -6,7 +6,9 @@
 //! Shared helpers for ONNX op conversion integration tests.
 
 mod runner;
-pub mod skeleton;
+
+#[allow(unused_imports)]
+pub use onnx2webnn::model_validation::{full_model, manifest, skeleton};
 
 // Not every test crate uses every helper.
 #[allow(unused_imports)]

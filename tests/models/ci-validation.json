@@ -1,0 +1,12 @@
+[
+  {
+    "file": "Xenova--tiny-random-RoFormerForMultipleChoice/onnx/model.onnx",
+    "revision": "3db6c9837f894f35ff0c26afe547bcbf24c97de0",
+    "sha256": "62128b34993971fcb7ded053c9af6932f2490724247315a112317fe398c97572",
+    "override_dims": {
+      "batch_size": 1,
+      "num_choices": 2,
+      "sequence_length": 16
+    }
+  }
+]

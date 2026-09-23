@@ -11,3 +11,7 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# Model caches
+.webnn-cache/
+.onnx-cache/

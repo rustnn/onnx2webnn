@@ -18,10 +18,12 @@
 
 use clap::{Parser, Subcommand};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use onnx2webnn::convert_onnx;
+use onnx2webnn::model_validation::manifest::Selection;
+use onnx2webnn::model_validation::{run_manifest_validation, RunOptions, WeightMode};
 use onnx2webnn::ConvertOptions;
+use onnx2webnn::{cache_onnx_model, convert_onnx, validate_cached_model_with_overrides};
 
 #[derive(Parser)]
 #[command(name = "onnx2webnn")]
@@ -71,7 +73,64 @@ enum Command {
         /// Preserve unresolved symbolic input dims as dynamic metadata (experimental)
         #[arg(long)]
         experimental_dynamic_inputs: bool,
+
+        /// Save the converted graph and self-contained ONNX model to the OS cache directory
+        #[arg(long)]
+        output: bool,
+
+        /// Reload cached WebNN artifacts, dispatch deterministic inputs, and compare with native ORT
+        #[arg(long, requires = "output")]
+        validate: bool,
+
+        /// Validate existing cache artifacts only; does not read or convert the source ONNX.
+        #[arg(long, conflicts_with_all = ["validate", "output"])]
+        validate_cached: bool,
     },
+
+    /// Numerically validate manifest models against reloaded WebNN artifacts
+    ValidateModels {
+        /// Manifest selection: all or match=<text>
+        #[arg(long)]
+        selection: String,
+
+        /// Weight source. Only publisher weights are currently supported.
+        #[arg(long, default_value_t = WeightMode::Real)]
+        weights: WeightMode,
+
+        /// Override tests/models/manifest.json
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+
+        /// Number of parallel light-model workers; heavy models remain sequential
+        #[arg(long, default_value_t = 1)]
+        jobs: usize,
+    },
+}
+
+fn cache_paths(input: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
+    let canonical = input.canonicalize().unwrap_or_else(|_| input.to_path_buf());
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in canonical.to_string_lossy().bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    let stem = input
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("model");
+    let safe_stem: String = stem
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let key = format!("{safe_stem}-{hash:016x}");
+    Ok((
+        onnx2webnn::cache::onnx_cache_dir()
+            .map_err(anyhow::Error::msg)?
+            .join(format!("{key}.onnx")),
+        onnx2webnn::cache::webnn_cache_dir()
+            .map_err(anyhow::Error::msg)?
+            .join(format!("{key}.webnn")),
+    ))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -89,6 +148,9 @@ fn main() -> anyhow::Result<()> {
             allow_missing_external_data,
             optimize,
             experimental_dynamic_inputs,
+            output,
+            validate,
+            validate_cached,
         } => {
             let mut free_dim_overrides = if let Some(path) = override_dims_file {
                 let content = std::fs::read_to_string(&path)?;
@@ -144,18 +206,86 @@ fn main() -> anyhow::Result<()> {
                 pinned_inputs.insert(name, value);
             }
 
+            let validation_overrides = free_dim_overrides.clone();
+            if validate_cached {
+                let (onnx_cache, webnn_cache) = cache_paths(input_path)?;
+                if !onnx_cache.exists() || !webnn_cache.exists() {
+                    return Err(anyhow::anyhow!(
+                        "cached validation requires {} and {}; run with --output first",
+                        onnx_cache.display(),
+                        webnn_cache.display()
+                    ));
+                }
+                let summary = validate_cached_model_with_overrides(
+                    &onnx_cache,
+                    &webnn_cache,
+                    &validation_overrides,
+                )
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+                println!(
+                    "✓ cached deterministic validation passed ({} inputs, {} outputs)",
+                    summary.input_count, summary.output_count
+                );
+                return Ok(());
+            }
+
+            let cache_paths = output.then(|| cache_paths(input_path)).transpose()?;
+            if let Some((onnx_cache, _)) = &cache_paths {
+                cache_onnx_model(input_path, onnx_cache, allow_missing_external_data)
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+            }
+
             let options = ConvertOptions {
                 free_dim_overrides,
                 optimize,
                 experimental_dynamic_inputs,
                 pinned_inputs,
                 zero_fill_missing_external_data: allow_missing_external_data,
+                output_path: cache_paths.as_ref().map(|(_, webnn)| webnn.clone()),
             };
 
             let _validated = convert_onnx(input_path.to_str().unwrap(), options)
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             // stdout (not stderr): PowerShell treats native stderr as NativeCommandError
             println!("✓ ORT graph build succeeded for {}", input);
+            if let Some((onnx_cache, webnn_cache)) = &cache_paths {
+                println!("✓ cached ONNX at {}", onnx_cache.display());
+                println!("✓ cached WebNN at {}", webnn_cache.display());
+                if validate {
+                    let summary = validate_cached_model_with_overrides(
+                        onnx_cache,
+                        webnn_cache,
+                        &validation_overrides,
+                    )
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    println!(
+                        "✓ deterministic validation passed ({} inputs, {} outputs)",
+                        summary.input_count, summary.output_count
+                    );
+                }
+            }
+        }
+        Command::ValidateModels {
+            selection,
+            weights,
+            manifest,
+            jobs,
+        } => {
+            let selection = Selection::parse(&selection).map_err(anyhow::Error::msg)?;
+            let mut options = RunOptions::new(selection, weights).map_err(anyhow::Error::msg)?;
+            options.jobs = jobs;
+            if let Some(manifest) = manifest {
+                options.manifest = manifest;
+            }
+            let summary = run_manifest_validation(options).map_err(anyhow::Error::msg)?;
+            println!("{summary}");
+            if summary.has_failures() {
+                return Err(anyhow::anyhow!(
+                    "{} of {} model validations failed",
+                    summary.failed.len(),
+                    summary.selected
+                ));
+            }
         }
     }
 

@@ -10,6 +10,8 @@ env:
   # ONNX Runtime dylib for the reference backend. rustnn pins ort 2.0.0-rc.13
   # with the `api-27` feature, so this must be >= 1.27 (any newer 1.x works).
   ORT_VERSION: 1.29.0
+  RUSTNN_REPO: rustnn/rustnn
+  RUSTNN_REF: main
 
 jobs:
   test:
@@ -69,7 +71,8 @@ jobs:
         id: rustnn
         uses: actions/checkout@v4
         with:
-          repository: rustnn/rustnn
+          repository: ${{ env.RUSTNN_REPO }}
+          ref: ${{ env.RUSTNN_REF }}
           path: rustnn
 
       - name: Install Rust
@@ -150,3 +153,16 @@ jobs:
           O2W_MODEL_TEST_JOBS: ${{ matrix.model_test_jobs || 2 }}
           O2W_MODEL_TEST_SKIP_HEAVY: 1
         run: cargo test --release --locked ${{ matrix.cargo_flags }}
+
+      - name: Validate curated full model
+        if: runner.os != 'Windows'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          O2W_ONNX_CACHE: ${{ runner.temp }}/onnx2webnn-ci-models
+          O2W_WEBNN_CACHE: ${{ runner.temp }}/onnx2webnn-ci-webnn
+        run: |
+          target/release/onnx2webnn validate-models \
+            --manifest tests/models/ci-validation.json \
+            --selection all \
+            --weights real \
+            --jobs 1

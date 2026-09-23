@@ -101,8 +101,36 @@ impl ConversionHandler {
 
         let output_name = output_label(node, node_name);
         let input = b.resolve_operand(&inputs[0])?;
+        let requested_type = to_type.unwrap() as i32;
+        if requested_type == crate::protos::onnx::TensorProto_DataType::Bool as i32 {
+            // ONNX numeric-to-bool casts normalize zero to false and every nonzero
+            // value (including NaN) to true. WebNN represents logical tensors as
+            // uint8, so a numeric cast alone would incorrectly preserve values.
+            let input_type = resolve_value_type(context, &inputs[0]).ok_or_else(|| {
+                OnnxError::InvalidShape(format!(
+                    "Cast could not infer input type from '{}'",
+                    inputs[0]
+                ))
+            })?;
+            let zero_name = format!("{output_name}__zero");
+            let zero_len = input_type.storage_byte_length(1).ok_or_else(|| {
+                OnnxError::InvalidShape("Cast boolean zero size overflow".to_string())
+            })?;
+            b.register_constant_from_bytes(&zero_name, input_type, &[], vec![0; zero_len])?;
+            let zero = b.resolve_operand(&zero_name)?;
+            let out = b
+                .builder
+                .not_equal_with_options(input, zero, OnnxBuilder::labeled_options(&output_name))
+                .map_err(map_op_error)?;
+            if let Some(onnx_out) = node.output.first() {
+                record_node_output(b, onnx_out, &output_name, out);
+            } else {
+                b.record_operand(&[&output_name], out);
+            }
+            return Ok(ConversionResult::default());
+        }
         // float64 is lowered to float32 (WebNN has no float64).
-        let mut to_type = to_type.unwrap() as i32;
+        let mut to_type = requested_type;
         if to_type == crate::protos::onnx::TensorProto_DataType::Double as i32 {
             to_type = crate::protos::onnx::TensorProto_DataType::Float as i32;
         }

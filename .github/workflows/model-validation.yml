@@ -1,0 +1,119 @@
+name: Full model validation
+
+on:
+  workflow_dispatch:
+
+env:
+  ORT_VERSION: 1.29.0
+  RUSTNN_REPO: rustnn/rustnn
+  RUSTNN_REF: main
+
+jobs:
+  validate:
+    name: Full real-weight sweep
+    runs-on: [self-hosted, linux, x64, onnx2webnn-validation]
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+        working-directory: onnx2webnn
+    steps:
+      - name: Checkout onnx2webnn
+        uses: actions/checkout@v4
+        with:
+          path: onnx2webnn
+
+      - name: Checkout rustnn
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RUSTNN_REPO }}
+          ref: ${{ env.RUSTNN_REF }}
+          path: rustnn
+
+      - name: Check runner contract
+        working-directory: ${{ github.workspace }}
+        run: |
+          cache=/var/cache/onnx2webnn
+          test -d "$cache"
+          test -w "$cache"
+          filesystem_bytes=$(df -PB1 "$cache" | awk 'NR == 2 { print $2 }')
+          memory_bytes=$(awk '/MemTotal/ { print $2 * 1024 }' /proc/meminfo)
+          minimum_filesystem=$((100 * 1024 * 1024 * 1024))
+          minimum_memory=$((30 * 1024 * 1024 * 1024))
+          if [ "$filesystem_bytes" -lt "$minimum_filesystem" ]; then
+            echo "Runner filesystem must be at least 100 GiB" >&2
+            exit 1
+          fi
+          if [ "$memory_bytes" -lt "$minimum_memory" ]; then
+            echo "Runner memory must be approximately 32 GiB (30 GiB minimum)" >&2
+            exit 1
+          fi
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install protobuf compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: full-validation-cargo-${{ hashFiles('onnx2webnn/Cargo.lock') }}
+          restore-keys: full-validation-cargo-
+
+      - name: Download ONNX Runtime ${{ env.ORT_VERSION }}
+        run: |
+          archive=onnxruntime-linux-x64-${ORT_VERSION}
+          url=https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${archive}.tgz
+          mkdir -p "$RUNNER_TEMP/ort"
+          curl -fsSL "$url" -o "$RUNNER_TEMP/ort/archive.tgz"
+          tar -xzf "$RUNNER_TEMP/ort/archive.tgz" -C "$RUNNER_TEMP/ort"
+          dylib="$RUNNER_TEMP/ort/$archive/lib/libonnxruntime.so"
+          if [ ! -f "$dylib" ]; then
+            dylib=$(find "$RUNNER_TEMP/ort/$archive/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -print -quit)
+          fi
+          test -f "$dylib"
+          echo "ORT_DYLIB_PATH=$dylib" >> "$GITHUB_ENV"
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Run diagnostic full sweep
+        id: validation
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          O2W_ONNX_CACHE: /var/cache/onnx2webnn
+          O2W_WEBNN_CACHE: ${{ runner.temp }}/onnx2webnn-webnn
+        run: |
+          set +e
+          target/release/onnx2webnn validate-models \
+            --manifest tests/models/manifest.json \
+            --selection all \
+            --weights real \
+            --jobs 1 2>&1 | tee "$RUNNER_TEMP/model-validation.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 0 ]; then
+            echo "## Full model validation: passed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Full model validation reported failures (exit code $status); see the summary and uploaded log."
+            echo "## Full model validation: diagnostic failures" >> "$GITHUB_STEP_SUMMARY"
+            echo "The validator exited with code $status. This manually dispatched sweep is diagnostic and does not fail the workflow." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload validation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-model-validation-real
+          path: ${{ runner.temp }}/model-validation.log
+          if-no-files-found: warn
+          retention-days: 14

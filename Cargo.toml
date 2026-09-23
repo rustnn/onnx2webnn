@@ -24,17 +24,20 @@ trtx = ["rustnn/trtx-runtime"]
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
+dirs = "6.0"
 half = "2.7.1"
 prost = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
+ureq = { version = "2.10", default-features = false, features = ["tls"] }
+sha2 = "0.10"
 
 rustnn = { path = "../rustnn", default-features = false, features = ["onnx-runtime"] }
 bytemuck = "1.15"
 webnn-onnx-utils = { git = "https://github.com/rustnn/webnn-onnx-utils", branch = "main" }
+huggingface-hub = { git = "https://github.com/huggingface/huggingface_hub_rust.git", rev = "20acfd61a767dcf7d6a0cb7f4a02ac8406fd8a14", version = "0.0.1", features = ["blocking", "xet"] }
 
 [dev-dependencies]
 pretty_env_logger = "0.5"
 tempfile = "3.8"
-ureq = { version = "2.10", default-features = false, features = ["tls"] }

@@ -51,6 +51,9 @@ const TENSOR_DATA_LOCATION: u32 = 14;
 /// Random-access bytes: a local file or a remote file read by ranges.
 pub trait ByteSource {
     fn len(&self) -> u64;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn read_at(&mut self, start: u64, len: usize) -> Result<Vec<u8>, String>;
 }
 
@@ -88,16 +91,21 @@ pub struct HubSource {
     agent: ureq::Agent,
     url: String,
     len: u64,
+    revision: Option<String>,
 }
 
 impl HubSource {
     /// `<org>--<repo>/onnx/<file>.onnx` -> `https://huggingface.co/<org>/<repo>/resolve/main/onnx/<file>.onnx`.
     pub fn open(file: &str) -> Result<Self, String> {
+        Self::open_revision(file, "main")
+    }
+
+    pub fn open_revision(file: &str, requested_revision: &str) -> Result<Self, String> {
         let (org_repo, rel) = file
             .split_once('/')
             .ok_or_else(|| format!("{file}: expected <org>--<repo>/<path>"))?;
         let repo = org_repo.replacen("--", "/", 1);
-        let url = format!("https://huggingface.co/{repo}/resolve/main/{rel}");
+        let url = format!("https://huggingface.co/{repo}/resolve/{requested_revision}/{rel}");
         let agent = ureq::AgentBuilder::new()
             .timeout(Duration::from_secs(120))
             .build();
@@ -110,6 +118,10 @@ impl HubSource {
         }
         let response = with_retries(|| request.clone().call().map_err(|e| e.to_string()))
             .map_err(|e| format!("resolve {url}: {e}"))?;
+        let revision = response
+            .header("x-repo-commit")
+            .map(str::to_string)
+            .or_else(|| (requested_revision != "main").then(|| requested_revision.to_string()));
         let len = response
             .header("Content-Length")
             .and_then(|v| v.parse().ok())
@@ -118,7 +130,16 @@ impl HubSource {
             agent,
             url: response.get_url().to_string(),
             len,
+            revision,
         })
+    }
+
+    pub fn revision(&self) -> Option<&str> {
+        self.revision.as_deref()
+    }
+
+    pub fn resolved_url(&self) -> &str {
+        &self.url
     }
 }
 
@@ -365,6 +386,8 @@ fn strip_tensor<S: ByteSource>(
     let mut saw_data = false;
     let mut dims = Vec::new();
     let mut data_type = 0u64;
+    let mut source_offset = None;
+    let mut source_encoding = None;
     while r.pos < end {
         let (field, wt) = r.read_tag()?;
         if TENSOR_DATA_FIELDS.contains(&field) {
@@ -372,6 +395,14 @@ fn strip_tensor<S: ByteSource>(
             if wt == LENGTH_DELIMITED {
                 let n = r.read_varint()?;
                 data_bytes += n;
+                if n as usize > keep_bytes {
+                    source_offset = Some(r.pos);
+                    source_encoding = Some(if field == 9 {
+                        "raw_data"
+                    } else {
+                        "protobuf_data"
+                    });
+                }
                 if n as usize <= keep_bytes {
                     kept.extend(encode_len_field(field, &r.read(n as usize)?));
                 } else {
@@ -426,6 +457,16 @@ fn strip_tensor<S: ByteSource>(
     let mut entry = encode_len_field(1, b"length");
     entry.extend(encode_len_field(2, length.to_string().as_bytes()));
     kept.extend(encode_len_field(TENSOR_EXTERNAL_DATA, &entry));
+    if let Some(offset) = source_offset {
+        let mut source = encode_len_field(1, b"o2w_source_offset");
+        source.extend(encode_len_field(2, offset.to_string().as_bytes()));
+        kept.extend(encode_len_field(TENSOR_EXTERNAL_DATA, &source));
+    }
+    if let Some(encoding) = source_encoding {
+        let mut source = encode_len_field(1, b"o2w_source_encoding");
+        source.extend(encode_len_field(2, encoding.as_bytes()));
+        kept.extend(encode_len_field(TENSOR_EXTERNAL_DATA, &source));
+    }
     kept.extend(encode_tag(TENSOR_DATA_LOCATION, VARINT));
     kept.extend(encode_varint(1));
     Ok(kept)

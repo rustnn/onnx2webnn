@@ -30,9 +30,9 @@ use rustnn::mlcontext::{
 };
 use rustnn::DataType;
 use serde_json::Value as JsonValue;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 use webnn_onnx_utils::{data_types as utils_data_types, identifiers};
 
@@ -101,6 +101,9 @@ pub enum OnnxError {
 
     #[error("shape inference failed for node: {0}")]
     ShapeInference(String),
+
+    #[error("validation failed: {0}")]
+    Validation(String),
 }
 
 impl OnnxError {
@@ -184,6 +187,9 @@ pub struct ConvertOptions {
     /// weight-stripped "skeleton" model exercise the full conversion and ORT
     /// graph build (values never matter for graph structure).
     pub zero_fill_missing_external_data: bool,
+    /// Write the lowered graph as a rustnn `.webnn` file plus sibling
+    /// `.safetensors` constants before building it for structural validation.
+    pub output_path: Option<PathBuf>,
 }
 
 /// Parse a `--pin-input NAME=VALUE` argument (`true`/`false` or an integer).
@@ -705,10 +711,6 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                             raw_name
                         )));
                     };
-
-                    if shape.is_empty() {
-                        continue;
-                    }
 
                     b.register_input(&raw_name, data_type, &shape)?;
 
@@ -1664,6 +1666,28 @@ pub fn convert_onnx<P: AsRef<Path>>(
     convert_model(model, &options)
 }
 
+/// Cache an ONNX model with all external tensor data embedded in the protobuf.
+///
+/// Keeping the cache self-contained means native ORT validation can reopen the
+/// cached `.onnx` without relying on a source-side `.onnx.data` file.
+pub fn cache_onnx_model<P: AsRef<Path>, Q: AsRef<Path>>(
+    source_path: P,
+    cache_path: Q,
+    zero_fill_missing_external_data: bool,
+) -> Result<(), OnnxError> {
+    let source_path = source_path.as_ref();
+    let bytes = fs::read(source_path)?;
+    let mut model = ModelProto::decode(bytes.as_slice())
+        .map_err(|e| OnnxError::ProtobufError(e.to_string()))?;
+    load_external_tensor_data(&mut model, source_path, zero_fill_missing_external_data)?;
+    let cache_path = cache_path.as_ref();
+    if let Some(parent) = cache_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(cache_path, model.encode_to_vec())?;
+    Ok(())
+}
+
 /// Inline `If` nodes whose condition folds to a constant (e.g. pyannote's
 /// shape-derived `Equal(Gather(Shape(x)), k)` gate). The chosen branch's
 /// nodes and initializers are spliced into the outer graph with internal
@@ -1944,7 +1968,7 @@ pub(crate) fn convert_model(
         .as_ref()
         .ok_or_else(|| OnnxError::ProtobufError("Missing graph in model".to_string()))?;
 
-    let mut outputs: HashMap<String, MLOperand> = HashMap::new();
+    let mut outputs: BTreeMap<String, MLOperand> = BTreeMap::new();
     for output in onnx_graph.output.as_slice() {
         // Sequences only exist as lowered elements; one escaping to a graph
         // output has no WebNN representation.
@@ -1960,6 +1984,17 @@ pub(crate) fn convert_model(
         let op = onnx_builder.output_operand(output.name.as_str())?;
         let output_key = onnx_builder.build_output_key(output.name.as_str());
         outputs.insert(output_key, op);
+    }
+    if let Some(path) = &options.output_path {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let output_refs: BTreeMap<&str, MLOperand> =
+            outputs.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+        onnx_builder
+            .builder
+            .rustnn_save_webnn(&output_refs, path)
+            .map_err(map_rustnn_error)?;
     }
     let output_refs: HashMap<&str, MLOperand> =
         outputs.iter().map(|(k, v)| (k.as_str(), *v)).collect();

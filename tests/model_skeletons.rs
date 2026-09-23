@@ -33,36 +33,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use common::manifest::{load_manifest, Entry};
 use common::skeleton::{strip_model, FileSource, HubSource, KEEP_BYTES};
 use onnx2webnn::protos::onnx::ModelProto;
 use onnx2webnn::{convert_model_proto, convert_onnx, ConvertOptions};
 use prost::Message;
-use serde::Deserialize;
-
-/// Large models recurse deeply in shape inference; the default 2 MB thread
-/// stack is not enough.
-const WORKER_STACK_BYTES: usize = 256 << 20;
-
-#[derive(Deserialize)]
-struct Entry {
-    file: String,
-    #[serde(default)]
-    heavy: bool,
-    /// Reason this model cannot build on the CoreML backend (e.g. a hard
-    /// backend limit like max tensor rank 5). Skipped when built with
-    /// `--features coreml`; still exercised on the ORT backend.
-    #[serde(default)]
-    coreml_unsupported: Option<String>,
-    /// Reason this model, while it does build on CoreML, takes so long there
-    /// that it would dominate the sweep (e.g. pathological Espresso compile
-    /// times). Skipped like `coreml_unsupported`.
-    #[serde(default)]
-    coreml_slow: Option<String>,
-    #[serde(default)]
-    override_dims: HashMap<String, u32>,
-    #[serde(default)]
-    pin_inputs: HashMap<String, i64>,
-}
 
 enum Source {
     Hub,
@@ -107,23 +82,32 @@ struct Sweep {
 }
 
 impl Sweep {
-    fn skeleton(&self, file: &str) -> Skeleton {
+    fn skeleton(&self, entry: &Entry) -> Skeleton {
+        let file = entry.file.as_str();
         let cell = self
             .skeletons
             .lock()
             .unwrap()
-            .entry(file.to_string())
+            .entry(entry.source_key())
             .or_default()
             .clone();
         cell.get_or_init(|| {
             let started = std::time::Instant::now();
-            let cached = matches!(self.source, Source::Hub).then(|| cache_dir().join(file));
+            let cached = matches!(self.source, Source::Hub).then(|| {
+                entry
+                    .revision
+                    .as_deref()
+                    .map(|revision| cache_dir().join("revisions").join(revision).join(file))
+                    .unwrap_or_else(|| cache_dir().join(file))
+            });
             if let Some(bytes) = cached.as_ref().and_then(|path| std::fs::read(path).ok()) {
                 let note = format!("skeleton {:.2} MB (cached)", bytes.len() as f64 / 1e6);
                 return Ok((Arc::new(bytes), note));
             }
             let (bytes, stats) = match &self.source {
-                Source::Hub => strip_model(HubSource::open(file)?, KEEP_BYTES)?,
+                Source::Hub => {
+                    strip_model(HubSource::open_revision(file, entry.revision())?, KEEP_BYTES)?
+                }
                 Source::StripDir(dir) => strip_model(FileSource::open(&dir.join(file))?, KEEP_BYTES)?,
                 Source::Dir(_) => unreachable!("full models are converted from disk"),
             };
@@ -152,31 +136,27 @@ impl Sweep {
     }
 
     fn convert(&self, idx: usize, entry: &Entry) {
-        let label = format!(
-            "#{idx} {} dims={:?} pins={:?}",
-            entry.file, entry.override_dims, entry.pin_inputs
-        );
+        let label = entry.label(idx);
         let options = ConvertOptions {
             free_dim_overrides: entry.override_dims.clone(),
             optimize: true,
             experimental_dynamic_inputs: false,
             pinned_inputs: entry.pin_inputs.clone(),
             zero_fill_missing_external_data: true,
+            output_path: None,
         };
         let started = std::time::Instant::now();
         let result = match &self.source {
             Source::Dir(dir) => convert_onnx(dir.join(&entry.file), options)
                 .map(|_| String::new())
                 .map_err(|e| e.to_string()),
-            Source::Hub | Source::StripDir(_) => {
-                self.skeleton(&entry.file).and_then(|(bytes, note)| {
-                    let model = ModelProto::decode(&bytes[..])
-                        .map_err(|e| format!("decode skeleton: {e}"))?;
-                    convert_model_proto(model, &options)
-                        .map(|_| note)
-                        .map_err(|e| e.to_string())
-                })
-            }
+            Source::Hub | Source::StripDir(_) => self.skeleton(entry).and_then(|(bytes, note)| {
+                let model =
+                    ModelProto::decode(&bytes[..]).map_err(|e| format!("decode skeleton: {e}"))?;
+                convert_model_proto(model, &options)
+                    .map(|_| note)
+                    .map_err(|e| e.to_string())
+            }),
         };
         match result {
             Ok(note) => {
@@ -205,17 +185,17 @@ impl Sweep {
         if matches!(self.source, Source::Dir(_)) {
             return;
         }
-        let mut files: Vec<&str> = entries.iter().map(|(_, e)| e.file.as_str()).collect();
-        files.sort_unstable();
-        files.dedup();
-        let queue = Mutex::new(files);
+        let mut sources: Vec<&Entry> = entries.iter().map(|(_, entry)| *entry).collect();
+        sources.sort_unstable_by_key(|entry| entry.source_key());
+        sources.dedup_by(|left, right| left.source_key() == right.source_key());
+        let queue = Mutex::new(sources);
         std::thread::scope(|scope| {
             for _ in 0..workers {
                 scope.spawn(|| loop {
-                    let Some(file) = queue.lock().unwrap().pop() else {
+                    let Some(entry) = queue.lock().unwrap().pop() else {
                         break;
                     };
-                    let _ = self.skeleton(file);
+                    let _ = self.skeleton(entry);
                 });
             }
         });
@@ -226,15 +206,12 @@ impl Sweep {
         let queue = Mutex::new(entries);
         std::thread::scope(|scope| {
             for _ in 0..workers {
-                std::thread::Builder::new()
-                    .stack_size(WORKER_STACK_BYTES)
-                    .spawn_scoped(scope, || loop {
-                        let Some((idx, entry)) = queue.lock().unwrap().pop() else {
-                            break;
-                        };
-                        self.convert(idx, entry);
-                    })
-                    .expect("spawn sweep worker");
+                scope.spawn(|| loop {
+                    let Some((idx, entry)) = queue.lock().unwrap().pop() else {
+                        break;
+                    };
+                    self.convert(idx, entry);
+                });
             }
         });
     }
@@ -244,16 +221,7 @@ impl Sweep {
 fn manifest_models_convert_and_build() {
     // Backend build errors are only visible through `log` (RUST_LOG=error).
     let _ = pretty_env_logger::try_init();
-    // O2W_MANIFEST points at another manifest (e.g. candidates under evaluation).
-    let manifest_path = std::env::var_os("O2W_MANIFEST")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/models/manifest.json")
-        });
-    let manifest = std::fs::read_to_string(&manifest_path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", manifest_path.display()));
-    let entries: Vec<Entry> = serde_json::from_str(&manifest).expect("parse manifest");
+    let entries = load_manifest().unwrap_or_else(|error| panic!("{error}"));
     let Some(source) = source() else {
         eprintln!("skipping model sweep: set O2W_MODELS=hub, dir=<path> or strip=<path>");
         return;

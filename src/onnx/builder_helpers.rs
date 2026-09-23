@@ -206,6 +206,21 @@ pub fn slice_with_params(
     map_op_result(b.builder.slice_with_options(input, starts, sizes, opts))
 }
 
+pub fn slice_with_params_and_strides(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    input: MLOperand,
+    label: &str,
+    starts: &[u32],
+    sizes: &[MLDimension],
+    strides: &[u32],
+) -> Result<MLOperand, OnnxError> {
+    let opts = MLSliceOptions {
+        label: label.to_string(),
+        strides: strides.to_vec(),
+    };
+    map_op_result(b.builder.slice_with_options(input, starts, sizes, opts))
+}
+
 /// First scalar element of an ONNX tensor as WebNN `MLNumber` (`serde_json::Value`).
 pub fn ml_number_from_tensor(t: &TensorProto) -> Result<Value, OnnxError> {
     match t.data_type {

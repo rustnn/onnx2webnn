@@ -21,7 +21,7 @@
 use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::builder_helpers::{
     ast_dims_to_mldim, expand_with_shape, i64_starts_as_u32, output_label, record_node_output,
-    slice_sizes_from_i64, slice_with_params,
+    slice_sizes_from_i64, slice_with_params, slice_with_params_and_strides,
 };
 use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::onnx::ops::conv::lookup_shape;
@@ -1681,7 +1681,7 @@ impl UtilityHandler {
         }
 
         let output_name = output_label(node, node_name);
-        let mut slice_params: Option<(Vec<u32>, Vec<MLDimension>)> = None;
+        let mut slice_params: Option<(Vec<u32>, Vec<MLDimension>, Vec<u32>)> = None;
         // Axes handled as full reverses (negative-step slices spanning the dim).
         let mut reverse_axes: Vec<u32> = Vec::new();
 
@@ -1904,11 +1904,9 @@ impl UtilityHandler {
                     start = start.clamp(0, dim);
                     end = end.clamp(0, dim);
 
-                    let size = if end <= start {
-                        0
-                    } else {
-                        (end - start + step - 1) / step
-                    };
+                    // WebNN `sizes` are input extents. The output dimension is
+                    // ceil(size / stride), which RustNN infers from the options.
+                    let size = (end - start).max(0);
 
                     // If this end value came from a dynamic dimension, mark the size as dynamic
                     if let Some(dims) = ends_dims {
@@ -1928,6 +1926,16 @@ impl UtilityHandler {
                 slice_params = Some((
                     i64_starts_as_u32(&dense_starts)?,
                     slice_sizes_from_i64(&dense_sizes, &dynamic_size_info)?,
+                    dense_strides
+                        .into_iter()
+                        .map(|stride| {
+                            u32::try_from(stride).map_err(|_| {
+                                OnnxError::InvalidShape(format!(
+                                    "Slice '{node_name}' stride {stride} is out of range"
+                                ))
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
                 ));
             } else {
                 return Err(OnnxError::InvalidShape(
@@ -2025,11 +2033,8 @@ impl UtilityHandler {
                     start = start.clamp(0, dim);
                     end = end.clamp(0, dim);
 
-                    let size = if end <= start {
-                        0
-                    } else {
-                        (end - start + step - 1) / step
-                    };
+                    // WebNN `sizes` are input extents, not output element counts.
+                    let size = (end - start).max(0);
 
                     dense_starts[axis] = start;
                     dense_sizes[axis] = size;
@@ -2039,11 +2044,21 @@ impl UtilityHandler {
                 slice_params = Some((
                     i64_starts_as_u32(&dense_starts)?,
                     slice_sizes_from_i64(&dense_sizes, &vec![None; rank])?,
+                    dense_strides
+                        .into_iter()
+                        .map(|stride| {
+                            u32::try_from(stride).map_err(|_| {
+                                OnnxError::InvalidShape(format!(
+                                    "Slice '{node_name}' stride {stride} is out of range"
+                                ))
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
                 ));
             }
         }
 
-        let (starts, sizes) = slice_params.ok_or_else(|| {
+        let (starts, sizes, strides) = slice_params.ok_or_else(|| {
             OnnxError::InvalidShape(
                 "Slice requires static starts/sizes for MLGraphBuilder".to_string(),
             )
@@ -2064,7 +2079,8 @@ impl UtilityHandler {
         } else {
             format!("{output_name}__pre_reverse")
         };
-        let mut out = slice_with_params(b, input, &slice_label, &starts, &sizes)?;
+        let mut out =
+            slice_with_params_and_strides(b, input, &slice_label, &starts, &sizes, &strides)?;
         if !reverse_axes.is_empty() {
             out = b
                 .builder

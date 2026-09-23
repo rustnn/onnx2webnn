@@ -9,7 +9,7 @@ The sweep manifest is defined by two rules, both reproduced here:
    `transformers.js` (--top N for more per task; the ranking is fetched from
    the Hub and cached under target/, --refresh-ranking re-fetches), minus
    repos and components documented as unconvertible in
-   tests/models/UNSUPPORTED_OPS.md. Tasks with nothing to convert
+   docs/transformersjs_excluded_models.md. Tasks with nothing to convert
    (`(tokenizer-only)`) are skipped; models without onnx/*.onnx files are
    reported.
 2. Which files: what transformers.js itself loads for that repo -- the
@@ -69,7 +69,7 @@ import onnx
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_MANIFEST = REPO_ROOT / "tests" / "models" / "manifest.json"
-DEFAULT_UNSUPPORTED_FILE = REPO_ROOT / "tests" / "models" / "UNSUPPORTED_OPS.md"
+DEFAULT_UNSUPPORTED_FILE = REPO_ROOT / "docs" / "transformersjs_excluded_models.md"
 DEFAULT_OVERRIDES = REPO_ROOT / "tests" / "models" / "manifest-overrides.json"
 # target/ is gitignored: the ranking snapshot and the review copy live there.
 DEFAULT_MODELS_JSON = REPO_ROOT / "target" / "transformers-js-models.json"
@@ -277,7 +277,7 @@ def select_repos(models: list[dict], top: int, only: list[str]) -> list[dict]:
     return picked
 
 
-# ---- UNSUPPORTED_OPS.md: repos and components known not to convert ----
+# ---- transformersjs_excluded_models.md: repos and components known not to convert ----
 
 SECTION_RE = re.compile(r"^## \[[^\]]+\]\(https://huggingface\.co/([^)]+)\)\s*$", re.MULTILINE)
 ONNX_REF_RE = re.compile(r"`onnx/([A-Za-z0-9_]+?)\*?(?:\.onnx)?`")
@@ -799,7 +799,7 @@ class Baselines:
             for name, value in (e.get("override_dims") or {}).items():
                 if self._branch_invariant(name):
                     self.repo_dims.setdefault(repo, {}).setdefault(name, value)
-            extra = {k: v for k, v in e.items() if k not in ("file", "heavy", "pin_inputs", "override_dims")}
+            extra = {k: v for k, v in e.items() if k not in ("file", "heavy", "pin_inputs", "override_dims", "validation")}
             if extra:
                 self.manual_fields[key] = extra
 

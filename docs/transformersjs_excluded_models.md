@@ -1,8 +1,27 @@
-# Unsupported ONNX Operators by Hugging Face Repository
+# Transformers.js Excluded Models
 
-This document records operators currently unsupported by `onnx2webnn`, grouped by Hugging Face repository.
+> **Last edited:** `2026-09-23T11:35:58Z`<br>
+> **Checkout:** `fkrall/cache-backed-validation` at `ac6d5ca`
+>
+> **Freshness:** Use this document only when this provenance is recent relative to the relevant
+> code and commits; otherwise verify the implementation, tests, and Git history before relying
+> on it.
 
-`scripts/generate_manifest.py` also reads it when regenerating `manifest.json`: a `## [org/repo](https://huggingface.co/org/repo)` section keeps that repo out of the sweep, and backticked `onnx/<component>*.onnx` references inside the section narrow the exclusion to those components (the rest of the repo stays in).
+This document records model exports currently excluded from onnx2webnn's generated sweep because
+of unsupported operators, unsupported operator forms, unresolved dimensions, or conversion defects.
+For the complete operator-level capability matrix, see
+[Operator conversion status](operator-conversion-status.md).
+
+The [`scripts/generate_manifest.py` generator](../scripts/generate_manifest.py) reads this document
+when regenerating [`tests/models/manifest.json`](../tests/models/manifest.json). A
+`## [org/repo](https://huggingface.co/org/repo)` section identifies a repository. Backticked
+`onnx/<component>*.onnx` references exclude only those component stems; a section without any such
+reference excludes the whole repository. The explanatory operator and error text is not parsed.
+
+An exclusions-disabled skeleton audit on 23 September 2026 found no listed component that became
+fully supported on the current branch. Generated cases retained a blocker, except that NLLB's
+decode/cache branch passed while its prefill branch still failed. Entries requiring unresolved or
+model-specific realistic dimensions were not fully re-audited and retain their previous diagnosis.
 
 ## [onnx-community/dpt-dinov2-small-kitti](https://huggingface.co/onnx-community/dpt-dinov2-small-kitti)
 
@@ -87,4 +106,6 @@ This document records operators currently unsupported by `onnx2webnn`, grouped b
 
 ## [Xenova/nllb-200-distilled-600M](https://huggingface.co/Xenova/nllb-200-distilled-600M)
 
-- `onnx/decoder_model_merged*.onnx` — the shared output-embedding bias reshape mis-derives its target shape from `decoder_sequence_length` instead of the vocab size, producing an incompatible broadcast (`decoder_sequence_length` vs. 256206); open (encoder_model converts)
+- `onnx/decoder_model_merged*.onnx` — the shared output-embedding bias reshape mis-derives its target shape from `decoder_sequence_length` instead of the vocab size, producing an incompatible broadcast (`decoder_sequence_length` vs. 256206); open. The decode/cache
+  branch builds, but the prefill branch still fails, so the component remains excluded
+  (encoder_model converts).

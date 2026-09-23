@@ -25,20 +25,23 @@ independent layers:
 |-------|----------------|-------|-----------------|
 | **1. WebNN spec** | Ops the W3C API defines | [webnn spec](https://www.w3.org/TR/webnn/) | ~105 |
 | **2. Name mapping** | ONNX op name ↔ WebNN `MLGraphBuilder` method | `webnn-onnx-utils/src/operation_names.rs` | ~90 |
-| **3. Exporter implementation** | ONNX ops with a Rust lowering handler | `src/onnx/ops/*.rs` + `scripts/webnn_onnx_ops.py` | ~59 |
+| **3. Exporter implementation** | Advertised ONNX names with a lowering or preprocessing path | `src/onnx/ops/*.rs` + `scripts/webnn_onnx_ops.py` | 135 |
 
 An ONNX op can be:
 
-- **No WebNN target** — e.g. `If`, `Loop`, `Scan` (control flow), `StringConcat` (no string
-  tensors), `Compress`, `Einsum`, `Attention`. WebNN graphs are static DAGs; these are permanently
-  rejected. See `docs/operator-conversion-plan.md` Stage 3.
-- **Mapped but not implemented** — e.g. `BatchNormalization`, `InstanceNormalization`, `ArgMax`,
-  `GatherND`, `Resize`. Listed in `operation_names.rs` but no handler in `src/onnx/ops/` yet.
-  Tests expect `UnsupportedOp` until a handler lands.
-- **Implemented** — listed in `scripts/webnn_onnx_ops.py` and handled by `OpRegistry`. Tests
-  expect `Success` (convert + ORT vs rustnn output match).
+- **No current lowering** — for example `Loop`, `Scan`, string operators, and general
+  sequence operators. Some have no portable WebNN representation.
+- **Pattern-only or partial** — for example constant-condition `If`, the narrow
+  `SplitToSequence` + `SequenceAt` export pattern, static `OneHot`, and restricted
+  `Einsum`. The handler rejects unsupported forms.
+- **Direct or decomposed** — advertised in `scripts/webnn_onnx_ops.py`. A decomposed op may be
+  functionally supported while remaining slower or narrower than a native backend kernel.
 
-The test manifest (`webnn_onnx_ops.py`) mirrors layer 3 only. Regenerate tests after changing it.
+The manifest contains 135 accepted names. At opset 26, 127 are standard `ai.onnx` names;
+adding the registry-only `SplitToSequence`/`SequenceAt` pattern gives 129/198 (65.2%) standard
+names with at least one executable lowering. Of those, 96/198 (48.5%) have a direct standardized
+WebNN primitive path. Name presence is not a promise of every ONNX schema variant. See
+`docs/operator-conversion-status.md` for the complete inventory and WebNN-imposed limitations. Regenerate tests after changing the manifest.
 
 ## Build and test
 
@@ -104,9 +107,10 @@ Operators with multiple pre-9 schema revisions skip sub-opset-9 structure bands
 until legacy attribute normalization lands; newer bands use the true latest schema
 revision in range (e.g. `MaxRoiPool` at model opset 22, `Pad` at 9/17/26).
 
-Operator dispatch and the unsupported-op pre-scan key on **`op_type` only** (standard
-`ai.onnx` domain). Custom-domain ops are not supported yet; adding them requires
-domain-aware handler registration and matching pre-scan logic in `convert.rs`.
+Operator dispatch and the unsupported-op pre-scan key on **`op_type` only**, not on the ONNX
+domain. This currently permits selected `com.microsoft` fused operators such as MoE/QMoE, but
+it is not general custom-domain support and cannot distinguish same-named operators across
+domains. Proper domain-aware support requires matching registry and pre-scan changes.
 
 ## Layout (committed)
 
@@ -147,7 +151,8 @@ history and tests the highest buildable opset in each band — e.g. `Pad` at ops
 (attribute `pads` vs input `pads` vs optional `axes` input). Ops with unchanged structure get a
 single test at the newest opset. Unbuildable ops get an `#[ignore]` stub.
 
-See [docs/operator-conversion-plan.md](docs/operator-conversion-plan.md) for the full operator rollout workflow.
+See [docs/operator-conversion-status.md](docs/operator-conversion-status.md) for the complete
+per-operator capability matrix.
 
 ## Dependencies (`Cargo.toml`)
 

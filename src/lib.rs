@@ -13,11 +13,14 @@ pub mod validation;
 pub mod onnx;
 
 pub use onnx::convert::{
-    cache_onnx_model, convert_model_proto, convert_onnx, ConvertOptions, OnnxError,
-    UnsupportedOpEntry, ValidatedGraph,
+    cache_onnx_model, convert_model_proto, convert_model_proto_with_backend, convert_onnx,
+    convert_onnx_with_backend, export_model_proto, export_onnx, BackendChoice, ConvertOptions,
+    OnnxError, UnsupportedOpEntry, ValidatedGraph,
 };
 pub use onnx::test_models;
 pub use validation::{
-    validate_cached_model, validate_cached_model_with_options,
-    validate_cached_model_with_overrides, ValidationSummary,
+    load_safetensors_inputs, validate_cached_model, validate_cached_model_with_inputs,
+    validate_cached_model_with_inputs_on_backend, validate_cached_model_with_options,
+    validate_cached_model_with_options_on_backend, validate_cached_model_with_overrides,
+    ValidationSummary,
 };

@@ -1,0 +1,1650 @@
+[
+  {
+    "name": "Abs",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Acos",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Acosh",
+    "status": "Decomposed",
+    "scope": "Elementwise decomposition; WebNN has no native acosh.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Add",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "AffineGrid",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "And",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ArgMax",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN argMax; select_last_index is not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ArgMin",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN argMin; select_last_index is not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Asin",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Asinh",
+    "status": "Decomposed",
+    "scope": "Elementwise decomposition; WebNN has no native asinh.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Atan",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Atanh",
+    "status": "Decomposed",
+    "scope": "Elementwise decomposition; WebNN has no native atanh.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Attention",
+    "status": "Unsupported",
+    "scope": "No native WebNN attention; no standard Attention decomposition is implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "AveragePool",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN pool; 1-D is emulated, higher spatial ranks rejected, and some ONNX padding modes are restricted.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "BatchNormalization",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN primitive; inference mode only.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Bernoulli",
+    "status": "Unsupported",
+    "scope": "WebNN has no graph random-number operators.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "BitCast",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding bitwise/reinterpretation primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "BitShift",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding bitwise/reinterpretation primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "BitwiseAnd",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding bitwise/reinterpretation primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "BitwiseNot",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding bitwise/reinterpretation primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "BitwiseOr",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding bitwise/reinterpretation primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "BitwiseXor",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding bitwise/reinterpretation primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "BlackmanWindow",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding signal-processing primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Cast",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN cast where the target type supports it; numeric-to-Boolean casts normalize nonzero values through a WebNN comparison. Unsupported ONNX/string element types are rejected.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "CastLike",
+    "status": "Decomposed",
+    "scope": "Infers the second input's type at conversion time, then emits WebNN cast.",
+    "perf_impact": "minimal",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Ceil",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Celu",
+    "status": "Decomposed",
+    "scope": "Elementwise decomposition; no native WebNN celu.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "CenterCropPad",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Clip",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Col2Im",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Compress",
+    "status": "Unsupported",
+    "scope": "No current lowering; missing primitive and/or data-dependent output shape.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Concat",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ConcatFromSequence",
+    "status": "Unsupported",
+    "scope": "WebNN has no sequence operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Constant",
+    "status": "Folded/static",
+    "scope": "Creates an inline WebNN constant; no runtime ONNX operation remains.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ConstantOfShape",
+    "status": "Folded/static",
+    "scope": "Materialized or expanded from statically resolvable shape/value data.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Conv",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN conv2d; 1-D is emulated and 3-D is unsupported.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ConvInteger",
+    "status": "Decomposed",
+    "scope": "Centers values in float, executes conv2d, then casts to int32; WebNN lacks integer accumulation, so large sums may lose exactness.",
+    "perf_impact": "high",
+    "perf_limited": true,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ConvTranspose",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN convTranspose2d; 1-D is emulated and 3-D is unsupported.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Cos",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Cosh",
+    "status": "Decomposed",
+    "scope": "Elementwise decomposition; WebNN has no native cosh.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "CumProd",
+    "status": "Decomposed",
+    "scope": "exp(cumulativeSum(log(x))); valid only for positive floating-point inputs. Zero and negative inputs are not generally correct.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "CumSum",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN cumulativeSum; axis must be constant.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "DFT",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding signal-processing primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "DeformConv",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "DepthToSpace",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "DequantizeLinear",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN primitive for supported scalar/effectively-scalar or full-rank block parameters; axis must be 1.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Det",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Div",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Dropout",
+    "status": "Unsupported",
+    "scope": "No current inference lowering; exporters may remove applicable training artifacts.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "DynamicQuantizeLinear",
+    "status": "Decomposed",
+    "scope": "Reduction/arithmetic decomposition followed by WebNN quantizeLinear.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Einsum",
+    "status": "Decomposed",
+    "scope": "Static reduce/transpose/reshape/matmul decomposition; at most two inputs, no ellipsis or repeated labels within a term.",
+    "perf_impact": "not inferred",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Elu",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Equal",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Erf",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Exp",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Expand",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN expand; target shape must be build-time resolvable.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "EyeLike",
+    "status": "Unsupported",
+    "scope": "No current lowering; missing primitive and/or data-dependent output shape.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Flatten",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Floor",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GRU",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN recurrent primitive with layout adaptation; sequence_lens and unsupported optional inputs are rejected.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Gather",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GatherElements",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GatherND",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN gatherND; ONNX batch_dims is currently ignored.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Gelu",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Gemm",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GlobalAveragePool",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN pool; supported for the implemented 1-D/2-D spatial forms.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GlobalLpPool",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GlobalMaxPool",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN pool; supported for the implemented 1-D/2-D spatial forms.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Greater",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GreaterOrEqual",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GridSample",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GroupNormalization",
+    "status": "Decomposed",
+    "scope": "Reduction and elementwise decomposition; relevant ranks and dimensions must be known.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "HammingWindow",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding signal-processing primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "HannWindow",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding signal-processing primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "HardSigmoid",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "HardSwish",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Hardmax",
+    "status": "Decomposed",
+    "scope": "Comparison/mask decomposition; requires known input shape.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Identity",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "If",
+    "status": "Folded/static",
+    "scope": "Only constant or pinned-constant conditions; the selected branch is resolved and inlined during conversion because WebNN has no control flow. Runtime-selectable models therefore require a separate `.webnn`/Safetensors pair per branch. Shared weights are not deduplicated, so keeping both compiled graphs resident may duplicate them in RAM and VRAM.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ImageDecoder",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "InstanceNormalization",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "IsInf",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN isInfinite; non-default ONNX detect_negative/detect_positive filtering is not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "IsNaN",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "LRN",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "LSTM",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN recurrent primitive with layout adaptation; sequence_lens and peepholes are rejected.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "LayerNormalization",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "LeakyRelu",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Less",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "LessOrEqual",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Log",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "LogSoftmax",
+    "status": "Decomposed",
+    "scope": "Softmax/log decomposition; no native WebNN logSoftmax.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Loop",
+    "status": "Unsupported",
+    "scope": "No WebNN runtime loop/control-flow representation.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "LpNormalization",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "LpPool",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN l2Pool2d only when p=2; 1-D is emulated and higher spatial ranks rejected.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "MatMul",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "MatMulInteger",
+    "status": "Decomposed",
+    "scope": "Centers values in float, executes matmul, then casts to int32; WebNN lacks integer accumulation, so large sums may lose exactness.",
+    "perf_impact": "high",
+    "perf_limited": true,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Max",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "MaxPool",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN pool; indices output is unsupported, 1-D is emulated, and higher spatial ranks are rejected.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "MaxRoiPool",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "MaxUnpool",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Mean",
+    "status": "Decomposed",
+    "scope": "Variadic binary fold; operation order and floating-point rounding can differ.",
+    "perf_impact": "not inferred",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "MeanVarianceNormalization",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "MelWeightMatrix",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding signal-processing primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Min",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Mish",
+    "status": "Decomposed",
+    "scope": "Softplus/tanh/multiply decomposition; no native WebNN mish.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Mod",
+    "status": "Decomposed",
+    "scope": "A - B * q(A/B) decomposition for both fmod modes; no WebNN remainder primitive.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Mul",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Multinomial",
+    "status": "Unsupported",
+    "scope": "WebNN has no graph random-number operators.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Neg",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "NegativeLogLikelihoodLoss",
+    "status": "Unsupported",
+    "scope": "No current inference lowering; exporters may remove applicable training artifacts.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "NonMaxSuppression",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "NonZero",
+    "status": "Unsupported",
+    "scope": "No current lowering; missing primitive and/or data-dependent output shape.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Not",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "OneHot",
+    "status": "Decomposed",
+    "scope": "Static comparison/mask decomposition; depth and values must be constant and indices shape known.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Optional",
+    "status": "Unsupported",
+    "scope": "WebNN has no optional operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "OptionalGetElement",
+    "status": "Unsupported",
+    "scope": "WebNN has no optional operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "OptionalHasElement",
+    "status": "Unsupported",
+    "scope": "WebNN has no optional operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Or",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "PRelu",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Pad",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN pad; rank and non-negative pads must be known at build time.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Pow",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "QLinearConv",
+    "status": "Unsupported",
+    "scope": "No fused WebNN quantized linear-algebra primitive; float decomposition is not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "QLinearMatMul",
+    "status": "Unsupported",
+    "scope": "No fused WebNN quantized linear-algebra primitive; float decomposition is not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "QuantizeLinear",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN primitive for supported scalar/effectively-scalar or full-rank block parameters; axis must be 1.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RMSNormalization",
+    "status": "Decomposed",
+    "scope": "Reduction and elementwise decomposition; relevant ranks and dimensions must be known.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RNN",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RandomNormal",
+    "status": "Unsupported",
+    "scope": "WebNN has no graph random-number operators.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RandomNormalLike",
+    "status": "Unsupported",
+    "scope": "WebNN has no graph random-number operators.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RandomUniform",
+    "status": "Unsupported",
+    "scope": "WebNN has no graph random-number operators.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RandomUniformLike",
+    "status": "Unsupported",
+    "scope": "WebNN has no graph random-number operators.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Range",
+    "status": "Folded/static",
+    "scope": "Implemented for constant scalar or supported bounded-symbolic forms.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Reciprocal",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceL1",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceL2",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceLogSum",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceLogSumExp",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceMax",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceMean",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceMin",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceProd",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceSum",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReduceSumSquare",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RegexFullMatch",
+    "status": "Unsupported",
+    "scope": "WebNN has no string tensor/operation support.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Relu",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Reshape",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN reshape; target shape must be build-time resolvable.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Resize",
+    "status": "Direct WebNN",
+    "scope": "Maps to WebNN resample2d; nearest/linear supported forms only, with 1-D emulation. Cubic and unsupported coordinate/axis modes are rejected.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ReverseSequence",
+    "status": "Direct WebNN",
+    "scope": "Partial mapping to WebNN reverse: sequence_lens and batch_axis semantics are ignored, so only full-axis reversal is equivalent.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RoiAlign",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "RotaryEmbedding",
+    "status": "Decomposed",
+    "scope": "Gather/rotate/concat decomposition; concrete dimensions and compatible cache shapes required.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Round",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "STFT",
+    "status": "Unsupported",
+    "scope": "WebNN has no corresponding signal-processing primitive.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Scan",
+    "status": "Unsupported",
+    "scope": "No WebNN runtime loop/control-flow representation.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ScatterElements",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN scatterElements; only reduction=none.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ScatterND",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN scatterND; only reduction=none.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Selu",
+    "status": "Decomposed",
+    "scope": "Elementwise decomposition; no native WebNN selu.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SequenceAt",
+    "status": "Pattern-only",
+    "scope": "Only a constant index into the converter's SplitToSequence pseudo-sequence.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SequenceConstruct",
+    "status": "Unsupported",
+    "scope": "WebNN has no sequence operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SequenceEmpty",
+    "status": "Unsupported",
+    "scope": "WebNN has no sequence operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SequenceErase",
+    "status": "Unsupported",
+    "scope": "WebNN has no sequence operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SequenceInsert",
+    "status": "Unsupported",
+    "scope": "WebNN has no sequence operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SequenceLength",
+    "status": "Unsupported",
+    "scope": "WebNN has no sequence operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SequenceMap",
+    "status": "Unsupported",
+    "scope": "WebNN has no sequence operand type.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Shape",
+    "status": "Folded/static",
+    "scope": "Resolved from known graph shape metadata.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Shrink",
+    "status": "Decomposed",
+    "scope": "Elementwise comparison/select decomposition; no native WebNN shrink.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Sigmoid",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Sign",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Sin",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Sinh",
+    "status": "Decomposed",
+    "scope": "Elementwise decomposition; WebNN has no native sinh.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Size",
+    "status": "Unsupported",
+    "scope": "No current executable lowering.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Slice",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN slice/reverse; starts, sizes, axes, and steps must resolve at build time. Positive steps are preserved as strides; negative steps support only the full-axis reverse pattern.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Softmax",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SoftmaxCrossEntropyLoss",
+    "status": "Unsupported",
+    "scope": "No current inference lowering; exporters may remove applicable training artifacts.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Softplus",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Softsign",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SpaceToDepth",
+    "status": "Unsupported",
+    "scope": "No current lowering; the required vision/spatial primitive is absent or not implemented.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Split",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN split; split sizes or the split dimension must be resolvable.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "SplitToSequence",
+    "status": "Pattern-only",
+    "scope": "Only the static split pattern consumed by constant-index SequenceAt; no sequence graph output.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Sqrt",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Squeeze",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN squeeze; axes must be resolvable.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "StringConcat",
+    "status": "Unsupported",
+    "scope": "WebNN has no string tensor/operation support.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "StringNormalizer",
+    "status": "Unsupported",
+    "scope": "WebNN has no string tensor/operation support.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "StringSplit",
+    "status": "Unsupported",
+    "scope": "WebNN has no string tensor/operation support.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Sub",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Sum",
+    "status": "Decomposed",
+    "scope": "Variadic binary fold; operation order and floating-point rounding can differ.",
+    "perf_impact": "not inferred",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Swish",
+    "status": "Decomposed",
+    "scope": "Sigmoid/multiply decomposition; no native WebNN swish.",
+    "perf_impact": "minimal",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Tan",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Tanh",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "TensorScatter",
+    "status": "Unsupported",
+    "scope": "No current lowering; missing primitive and/or data-dependent output shape.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "TfIdfVectorizer",
+    "status": "Unsupported",
+    "scope": "WebNN has no string tensor/operation support.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "ThresholdedRelu",
+    "status": "Decomposed",
+    "scope": "Comparison/select decomposition; no native WebNN thresholdedRelu.",
+    "perf_impact": "minimal",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Tile",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN tile; repeats must be constant.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "TopK",
+    "status": "Unsupported",
+    "scope": "No current lowering; missing primitive and/or data-dependent output shape.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Transpose",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Trilu",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN triangular; k must be resolvable.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Unique",
+    "status": "Unsupported",
+    "scope": "No current lowering; missing primitive and/or data-dependent output shape.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Unsqueeze",
+    "status": "Direct WebNN",
+    "scope": "Direct WebNN unsqueeze; axes must be resolvable.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Where",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "Xor",
+    "status": "Direct WebNN",
+    "scope": "Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply.",
+    "perf_impact": "",
+    "perf_limited": false,
+    "domain": "ai.onnx"
+  },
+  {
+    "name": "GatherBlockQuantized",
+    "status": "Decomposed",
+    "scope": "Gathers packed rows/scales/zero points and dequantizes only the selected slice for supported 2-D axis-0 tables; other layouts fall back at conversion time.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "com.microsoft"
+  },
+  {
+    "name": "GroupQueryAttention",
+    "status": "Decomposed",
+    "scope": "Static attention/cache subgraph. WebNN has no fused attention; runtime sequence metadata is ignored and softcap/local-window modes are rejected. Fused backend kernels and the portable decomposition need not be bit-identical, so an immediately following dynamic quantizer can amplify legal rounding differences.",
+    "perf_impact": "high",
+    "perf_limited": true,
+    "domain": "com.microsoft"
+  },
+  {
+    "name": "MatMulBnb4",
+    "status": "Decomposed",
+    "scope": "Packed NF4/FP4 block path where representable; incompatible tails become dense constants, losing low-bit memory/performance benefits.",
+    "perf_impact": "high",
+    "perf_limited": true,
+    "domain": "com.microsoft"
+  },
+  {
+    "name": "MatMulNBits",
+    "status": "Decomposed",
+    "scope": "Supported 4/8-bit constant layouts dequantize into a matmul path; g_idx is rejected. WebNN has no low-bit matmul kernel.",
+    "perf_impact": "high",
+    "perf_limited": true,
+    "domain": "com.microsoft"
+  },
+  {
+    "name": "MoE",
+    "status": "Decomposed",
+    "scope": "All experts execute densely because WebNN has no TopK or sparse dispatch. Approximate compute overhead is num_experts/k; supported activation/fusion forms only.",
+    "perf_impact": "high",
+    "perf_limited": true,
+    "domain": "com.microsoft"
+  },
+  {
+    "name": "QMoE",
+    "status": "Decomposed",
+    "scope": "Supported 4/8-bit expert weights feed the same dense all-expert lowering; block-layout fallbacks may dequantize at conversion time.",
+    "perf_impact": "high",
+    "perf_limited": true,
+    "domain": "com.microsoft"
+  },
+  {
+    "name": "SimplifiedLayerNormalization",
+    "status": "Decomposed",
+    "scope": "RMS-style normalization decomposition; no matching WebNN fused primitive.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "com.microsoft"
+  },
+  {
+    "name": "SkipSimplifiedLayerNormalization",
+    "status": "Decomposed",
+    "scope": "Residual/bias plus simplified normalization decomposition; no matching WebNN fused primitive.",
+    "perf_impact": "moderate",
+    "perf_limited": false,
+    "domain": "com.microsoft"
+  }
+]

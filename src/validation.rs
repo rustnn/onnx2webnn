@@ -1,6 +1,8 @@
 //! Cache reload and deterministic native-ORT validation for exported WebNN graphs.
+mod quantized_inputs;
+
 use crate::onnx::builder::OnnxBuilder;
-use crate::onnx::convert::{OnnxError, ValidatedGraph};
+use crate::onnx::convert::{BackendChoice, OnnxError, ValidatedGraph};
 use crate::protos::onnx::{
     tensor_shape_proto::dimension::Value as DimensionValue, type_proto::Value as TypeProtoValue,
     ModelProto, TensorProto_DataType, ValueInfoProto,
@@ -8,11 +10,10 @@ use crate::protos::onnx::{
 use half::f16;
 use prost::Message;
 use rustnn::graph::OperandDescriptor;
-use rustnn::mlcontext::{
-    MLContext, MLContextOptions, MLPowerPreference, MLTensor, MLTensorDescriptor,
-};
+use rustnn::mlcontext::{MLContext, MLTensor, MLTensorDescriptor};
 use rustnn::operator_enums::MLOperandDataType;
 use rustnn::{load_graph_from_path, run_onnx_path_with_inputs, OnnxInput, TensorData};
+use safetensors::{tensor::Dtype, SafeTensors};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -49,27 +50,272 @@ pub fn validate_cached_model_with_options(
     free_dim_overrides: &HashMap<String, u32>,
     pinned_inputs: &HashMap<String, i64>,
 ) -> Result<ValidationSummary, OnnxError> {
+    validate_cached_model_with_options_on_backend(
+        onnx_path,
+        webnn_path,
+        free_dim_overrides,
+        pinned_inputs,
+        BackendChoice::Ort,
+    )
+}
+
+pub fn validate_cached_model_with_options_on_backend(
+    onnx_path: impl AsRef<Path>,
+    webnn_path: impl AsRef<Path>,
+    free_dim_overrides: &HashMap<String, u32>,
+    pinned_inputs: &HashMap<String, i64>,
+    backend: BackendChoice,
+) -> Result<ValidationSummary, OnnxError> {
     let onnx_bytes = fs::read(onnx_path.as_ref())?;
     let model = ModelProto::decode(onnx_bytes.as_slice())
         .map_err(|e| OnnxError::ProtobufError(e.to_string()))?;
-    let inputs = deterministic_inputs(&model, free_dim_overrides, pinned_inputs)?;
-    let reference = run_onnx_path_with_inputs(onnx_path.as_ref(), clone_inputs(&inputs))
+    let inputs = deterministic_inputs(
+        &model,
+        Some(onnx_path.as_ref()),
+        free_dim_overrides,
+        pinned_inputs,
+    )?;
+    validate_with_inputs(
+        onnx_path.as_ref(),
+        webnn_path.as_ref(),
+        &model,
+        inputs,
+        pinned_inputs,
+        backend,
+    )
+}
+
+/// Use complete, caller-supplied feed tensors for native ORT and the reloaded WebNN graph.
+pub fn validate_cached_model_with_inputs(
+    onnx_path: impl AsRef<Path>,
+    webnn_path: impl AsRef<Path>,
+    inputs: Vec<OnnxInput>,
+    pinned_inputs: &HashMap<String, i64>,
+) -> Result<ValidationSummary, OnnxError> {
+    validate_cached_model_with_inputs_on_backend(
+        onnx_path,
+        webnn_path,
+        inputs,
+        pinned_inputs,
+        BackendChoice::Ort,
+    )
+}
+
+pub fn validate_cached_model_with_inputs_on_backend(
+    onnx_path: impl AsRef<Path>,
+    webnn_path: impl AsRef<Path>,
+    inputs: Vec<OnnxInput>,
+    pinned_inputs: &HashMap<String, i64>,
+    backend: BackendChoice,
+) -> Result<ValidationSummary, OnnxError> {
+    let bytes = fs::read(onnx_path.as_ref())?;
+    let model = ModelProto::decode(bytes.as_slice())
+        .map_err(|e| OnnxError::ProtobufError(e.to_string()))?;
+    validate_with_inputs(
+        onnx_path.as_ref(),
+        webnn_path.as_ref(),
+        &model,
+        inputs,
+        pinned_inputs,
+        backend,
+    )
+}
+
+fn validate_with_inputs(
+    onnx_path: &Path,
+    webnn_path: &Path,
+    model: &ModelProto,
+    inputs: Vec<OnnxInput>,
+    pinned_inputs: &HashMap<String, i64>,
+    backend: BackendChoice,
+) -> Result<ValidationSummary, OnnxError> {
+    let backend_options = crate::onnx::convert::backend_context_options(backend)?;
+    let reference = run_onnx_path_with_inputs(onnx_path, clone_inputs(&inputs))
         .map_err(|e| OnnxError::Validation(format!("native ORT run failed: {e}")))?;
-    let graph_info = load_graph_from_path(webnn_path.as_ref())
+    let graph_info = load_graph_from_path(webnn_path)
         .map_err(|e| OnnxError::Validation(format!("failed to reload WebNN cache: {e}")))?;
-    let mut context = MLContext::create(&MLContextOptions::new(MLPowerPreference::Default, false))
-        .map_err(|e| OnnxError::Validation(format!("MLContext::create failed: {e}")))?;
+    let mut context = MLContext::create(&backend_options)
+        .map_err(|e| OnnxError::Backend(format!("{backend} context creation failed: {e}")))?;
     let graph = context
         .rustnn_build_graph(graph_info)
-        .map_err(|e| OnnxError::Validation(format!("cached graph build failed: {e}")))?;
+        .map_err(|e| OnnxError::Backend(format!("{backend} cached graph build failed: {e}")))?;
     let mut validated = ValidatedGraph { context, graph };
     let input_count = validated.graph.input_descriptors.len();
-    let actual = dispatch_and_collect(&mut validated, &model, &inputs, pinned_inputs)?;
-    compare_outputs(&model, &reference, &actual)?;
+    let actual = dispatch_and_collect(&mut validated, model, &inputs, pinned_inputs)?;
+    compare_outputs(model, &reference, &actual)?;
     Ok(ValidationSummary {
         input_count,
         pinned_input_count: pinned_inputs.len(),
         output_count: reference.len(),
+    })
+}
+
+/// Read a complete SafeTensors feed and infer/check named symbolic dimensions.
+pub fn load_safetensors_inputs(
+    onnx_path: impl AsRef<Path>,
+    inputs_path: impl AsRef<Path>,
+    overrides: &HashMap<String, u32>,
+    pins: &HashMap<String, i64>,
+) -> Result<(HashMap<String, u32>, Vec<OnnxInput>), OnnxError> {
+    let model_bytes = fs::read(onnx_path)?;
+    let model = ModelProto::decode(model_bytes.as_slice())
+        .map_err(|e| OnnxError::ProtobufError(e.to_string()))?;
+    let input_bytes = fs::read(inputs_path)?;
+    let archive = SafeTensors::deserialize(&input_bytes)
+        .map_err(|e| OnnxError::Validation(format!("invalid SafeTensors inputs: {e}")))?;
+    let feedable = feedable_inputs(&model)?;
+    let expected: HashSet<&str> = feedable
+        .iter()
+        .filter(|vi| !pins.contains_key(&vi.name))
+        .map(|vi| vi.name.as_str())
+        .collect();
+    let actual: HashSet<&str> = archive.names().iter().copied().collect();
+    if expected != actual {
+        let mut missing: Vec<_> = expected.difference(&actual).copied().collect();
+        let mut extra: Vec<_> = actual.difference(&expected).copied().collect();
+        missing.sort_unstable();
+        extra.sort_unstable();
+        return Err(OnnxError::Validation(format!(
+            "SafeTensors input names differ: missing {missing:?}, extra {extra:?}"
+        )));
+    }
+    let mut resolved = overrides.clone();
+    for vi in &feedable {
+        if pins.contains_key(&vi.name) {
+            continue;
+        }
+        let view = archive
+            .tensor(&vi.name)
+            .map_err(|e| OnnxError::Validation(format!("missing input {}: {e}", vi.name)))?;
+        let shape = vi
+            .r#type
+            .as_ref()
+            .and_then(|ty| ty.value.as_ref())
+            .and_then(|ty| match ty {
+                TypeProtoValue::TensorType(t) => t.shape.as_ref(),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                OnnxError::Validation(format!("missing tensor shape for {}", vi.name))
+            })?;
+        if shape.dim.len() != view.shape().len() {
+            return Err(OnnxError::Validation(format!(
+                "{} rank mismatch: expected {}, got {}",
+                vi.name,
+                shape.dim.len(),
+                view.shape().len()
+            )));
+        }
+        for (axis, (dim, &value)) in shape.dim.iter().zip(view.shape()).enumerate() {
+            match dim.value.as_ref() {
+                Some(DimensionValue::DimValue(expected))
+                    if *expected >= 0 && *expected as usize == value => {}
+                Some(DimensionValue::DimParam(name)) => {
+                    let value = u32::try_from(value).map_err(|_| {
+                        OnnxError::Validation(format!("{} dimension {axis} exceeds u32", vi.name))
+                    })?;
+                    if let Some(previous) = resolved.insert(name.clone(), value) {
+                        if previous != value {
+                            return Err(OnnxError::Validation(format!(
+                            "symbolic dimension {name} conflicts: {previous} versus {value} in {}", vi.name)));
+                        }
+                    }
+                }
+                Some(DimensionValue::DimValue(expected)) => {
+                    return Err(OnnxError::Validation(format!(
+                        "{} dimension {axis}: expected {expected}, got {value}",
+                        vi.name
+                    )))
+                }
+                _ => {
+                    return Err(OnnxError::Validation(format!(
+                        "{} dimension {axis} has no symbol; provide a fixed ONNX shape",
+                        vi.name
+                    )))
+                }
+            }
+        }
+    }
+    let mut inputs = deterministic_inputs(&model, None, &resolved, pins)?;
+    for input in &mut inputs {
+        if pins.contains_key(&input.name) {
+            continue;
+        }
+        let view = archive
+            .tensor(&input.name)
+            .map_err(|e| OnnxError::Validation(format!("missing input {}: {e}", input.name)))?;
+        if view.shape() != input.shape {
+            return Err(OnnxError::Validation(format!(
+                "{} shape mismatch",
+                input.name
+            )));
+        }
+        let (elem_type, _) = tensor_dims(
+            feedable
+                .iter()
+                .find(|vi| vi.name == input.name)
+                .expect("known input"),
+            &resolved,
+        )?;
+        input.data = decode_safetensors_input(
+            &input.name,
+            elem_type,
+            view.dtype(),
+            view.data(),
+            checked_element_count(&input.name, &input.shape)?,
+        )?;
+    }
+    Ok((resolved, inputs))
+}
+
+fn decode_safetensors_input(
+    name: &str,
+    onnx_dtype: i32,
+    storage: Dtype,
+    bytes: &[u8],
+    count: usize,
+) -> Result<TensorData, OnnxError> {
+    macro_rules! decode {
+        ($dtype:expr, $width:expr, $variant:ident, $type:ty) => {{
+            if storage != $dtype || count.checked_mul($width) != Some(bytes.len()) {
+                return Err(OnnxError::Validation(format!(
+                    "{name} dtype or element-count mismatch: expected {:?} with {count} elements",
+                    $dtype
+                )));
+            }
+            TensorData::$variant(
+                bytes
+                    .chunks_exact($width)
+                    .map(|chunk| {
+                        let array: [u8; $width] = chunk.try_into().expect("exact chunk");
+                        <$type>::from_le_bytes(array)
+                    })
+                    .collect(),
+            )
+        }};
+    }
+    Ok(match onnx_dtype {
+        x if x == TensorProto_DataType::Float as i32 => decode!(Dtype::F32, 4, Float32, f32),
+        x if x == TensorProto_DataType::Float16 as i32 => decode!(Dtype::F16, 2, Float16, u16),
+        x if x == TensorProto_DataType::Int8 as i32 => decode!(Dtype::I8, 1, Int8, i8),
+        x if x == TensorProto_DataType::Uint8 as i32 => decode!(Dtype::U8, 1, Uint8, u8),
+        x if x == TensorProto_DataType::Int32 as i32 => decode!(Dtype::I32, 4, Int32, i32),
+        x if x == TensorProto_DataType::Uint32 as i32 => decode!(Dtype::U32, 4, Uint32, u32),
+        x if x == TensorProto_DataType::Int64 as i32 => decode!(Dtype::I64, 8, Int64, i64),
+        x if x == TensorProto_DataType::Uint64 as i32 => decode!(Dtype::U64, 8, Uint64, u64),
+        x if x == TensorProto_DataType::Bool as i32 => {
+            if storage != Dtype::BOOL || bytes.len() != count || bytes.iter().any(|&v| v > 1) {
+                return Err(OnnxError::Validation(format!(
+                    "{name} must be {count} Boolean values"
+                )));
+            }
+            TensorData::Uint8(bytes.to_vec())
+        }
+        other => {
+            return Err(OnnxError::Validation(format!(
+                "unsupported supplied input dtype {other} for {name}"
+            )))
+        }
     })
 }
 
@@ -256,6 +502,7 @@ fn input_data(
 
 fn deterministic_inputs(
     model: &ModelProto,
+    model_path: Option<&Path>,
     free_dim_overrides: &HashMap<String, u32>,
     pinned_inputs: &HashMap<String, i64>,
 ) -> Result<Vec<OnnxInput>, OnnxError> {
@@ -273,12 +520,23 @@ fn deterministic_inputs(
         .map(|input| {
             let (elem_type, shape) = tensor_dims(input, free_dim_overrides)?;
             let count = checked_element_count(&input.name, &shape)?;
-            let data = input_data(
-                elem_type,
-                count,
-                &input.name,
-                pinned_inputs.get(&input.name).copied(),
-            )?;
+            let pinned_value = pinned_inputs.get(&input.name).copied();
+            let data = if pinned_value.is_some() || semantic_input_value(&input.name).is_some() {
+                input_data(elem_type, count, &input.name, pinned_value)?
+            } else if let Some(path) = model_path {
+                match quantized_inputs::quantized_input_data(
+                    model,
+                    path,
+                    &input.name,
+                    elem_type,
+                    count,
+                )? {
+                    Some(data) => data,
+                    None => deterministic_data(elem_type, count, &input.name)?,
+                }
+            } else {
+                deterministic_data(elem_type, count, &input.name)?
+            };
             Ok(OnnxInput {
                 name: input.name.clone(),
                 shape,
@@ -506,7 +764,12 @@ fn dispatch_and_collect(
     validated
         .context
         .dispatch(&mut validated.graph, &input_bindings, &output_bindings)
-        .map_err(|e| OnnxError::Validation(format!("cached graph dispatch failed: {e}")))?;
+        .map_err(|e| {
+            OnnxError::Backend(format!(
+                "{:?} cached graph dispatch failed: {e}",
+                validated.context.rustnn_backend()
+            ))
+        })?;
     output_map
         .into_iter()
         .map(|(onnx_name, key)| {

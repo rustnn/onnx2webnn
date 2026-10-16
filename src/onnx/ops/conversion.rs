@@ -127,7 +127,10 @@ impl ConversionHandler {
             } else {
                 b.record_operand(&[&output_name], out);
             }
-            return Ok(ConversionResult::default());
+            return Ok(ConversionResult {
+                lowering: Some(crate::onnx::ops::catalog::LoweringPath::Decomposed),
+                ..ConversionResult::default()
+            });
         }
         // float64 is lowered to float32 (WebNN has no float64).
         let mut to_type = requested_type;

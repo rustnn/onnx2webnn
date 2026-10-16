@@ -5,7 +5,10 @@
 
 use super::full_model::cache_full_model;
 use super::manifest::{load_manifest_from, Entry, Selection};
-use crate::{convert_onnx, validate_cached_model_with_options, ConvertOptions};
+use crate::{
+    convert_onnx_with_backend, validate_cached_model_with_options_on_backend, BackendChoice,
+    ConvertOptions,
+};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -13,6 +16,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex, OnceLock};
 
 type ModelCell = Arc<OnceLock<Result<PathBuf, String>>>;
+const MODEL_BARRIER: &str = "------------------------------------------------------------";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum WeightMode {
@@ -45,6 +49,7 @@ pub struct RunOptions {
     pub manifest: PathBuf,
     pub jobs: usize,
     pub webnn_cache: PathBuf,
+    pub backend: BackendChoice,
 }
 
 impl RunOptions {
@@ -59,6 +64,7 @@ impl RunOptions {
                 .unwrap_or_else(|| root.join("tests/models/manifest.json")),
             jobs: 1,
             webnn_cache: crate::cache::webnn_cache_dir()?,
+            backend: BackendChoice::Ort,
         })
     }
 }
@@ -94,6 +100,8 @@ impl RunSummary {
 impl fmt::Display for RunSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Model validation summary")?;
+        writeln!(f)?;
+        writeln!(f)?;
         writeln!(f, "Succeeded ({}):", self.succeeded.len())?;
         if self.succeeded.is_empty() {
             writeln!(f, "  (none)")?;
@@ -102,14 +110,24 @@ impl fmt::Display for RunSummary {
                 writeln!(f, "  PASS {label}")?;
             }
         }
+        writeln!(f)?;
+        writeln!(f)?;
         writeln!(f, "Failed ({}):", self.failed.len())?;
         if self.failed.is_empty() {
             writeln!(f, "  (none)")?;
         } else {
-            for failure in &self.failed {
-                writeln!(f, "  FAIL {}: {}", failure.label, failure.error)?;
+            for (index, failure) in self.failed.iter().enumerate() {
+                if index != 0 {
+                    writeln!(f)?;
+                }
+                writeln!(f, "  FAIL {}", failure.label)?;
+                for line in failure.error.lines() {
+                    writeln!(f, "    {line}")?;
+                }
             }
         }
+        writeln!(f)?;
+        writeln!(f)?;
         write!(
             f,
             "Overall: {}/{} passed ({:.1}%)",
@@ -139,6 +157,8 @@ pub fn run_manifest_validation(options: RunOptions) -> Result<RunSummary, String
         options,
         models: Mutex::new(HashMap::new()),
         results: Mutex::new(Vec::new()),
+        completed: Mutex::new(0),
+        total: selected_count,
     };
     sweep.run(light, sweep.options.jobs);
     sweep.run(heavy, 1);
@@ -175,6 +195,8 @@ struct Sweep {
     options: RunOptions,
     models: Mutex<HashMap<String, ModelCell>>,
     results: Mutex<Vec<ModelResult>>,
+    completed: Mutex<usize>,
+    total: usize,
 }
 
 impl Sweep {
@@ -186,11 +208,15 @@ impl Sweep {
 
     fn validate(&self, index: usize, entry: &Entry) {
         let label = entry.label(index);
-        match self.validate_inner(entry) {
+        let result = self.validate_inner(entry);
+        let mut completed = self.completed.lock().unwrap();
+        *completed += 1;
+        let progress = format!("Model {}/{}", *completed, self.total);
+        match result {
             Ok((inputs, pins, outputs)) => {
                 eprintln!(
-                    "ok   {label}\n     {inputs} inputs + {pins} pinned, {outputs} outputs ({})",
-                    self.options.weights
+                    "\n{progress}\nok   {label}\n     {inputs} inputs + {pins} pinned, {outputs} outputs ({})\n{MODEL_BARRIER}\n",
+                    self.options.weights,
                 );
                 self.results.lock().unwrap().push(ModelResult {
                     index,
@@ -199,7 +225,7 @@ impl Sweep {
                 });
             }
             Err(error) => {
-                eprintln!("FAIL {label}\n     {error}");
+                eprintln!("\n{progress}\nFAIL {label}\n     {error}\n{MODEL_BARRIER}\n");
                 self.results.lock().unwrap().push(ModelResult {
                     index,
                     label,
@@ -220,7 +246,7 @@ impl Sweep {
         ));
         std::fs::create_dir_all(webnn_path.parent().expect("cache parent"))
             .map_err(|e| format!("export: {e}"))?;
-        convert_onnx(
+        convert_onnx_with_backend(
             &onnx_path,
             ConvertOptions {
                 free_dim_overrides: entry.override_dims.clone(),
@@ -230,16 +256,18 @@ impl Sweep {
                 zero_fill_missing_external_data: false,
                 output_path: Some(webnn_path.clone()),
             },
+            self.options.backend,
         )
         .map_err(|e| format!("conversion/export: {e}"))?;
         if !webnn_path.exists() || !webnn_path.with_extension("safetensors").exists() {
             return Err("export did not produce .webnn and .safetensors".to_string());
         }
-        let summary = validate_cached_model_with_options(
+        let summary = validate_cached_model_with_options_on_backend(
             &onnx_path,
             &webnn_path,
             &entry.override_dims,
             &entry.pin_inputs,
+            self.options.backend,
         )
         .map_err(|e| classify(&e.to_string()))?;
         Ok((
@@ -306,9 +334,46 @@ mod tests {
             }],
         };
         let report = summary.to_string();
-        assert!(report.contains("Succeeded (2):\n  PASS #0 first\n  PASS #2 third"));
-        assert!(report.contains("Failed (1):\n  FAIL #1 second: comparison: mismatch"));
-        assert!(report.contains("Overall: 2/3 passed (66.7%)"));
+        assert_eq!(
+            report,
+            concat!(
+                "Model validation summary\n\n\n",
+                "Succeeded (2):\n",
+                "  PASS #0 first\n",
+                "  PASS #2 third\n\n\n",
+                "Failed (1):\n",
+                "  FAIL #1 second\n",
+                "    comparison: mismatch\n\n\n",
+                "Overall: 2/3 passed (66.7%)"
+            )
+        );
         assert!(summary.has_failures());
+    }
+
+    #[test]
+    fn failed_models_have_separate_details_and_spacing() {
+        let summary = RunSummary {
+            selected: 2,
+            passed: 0,
+            succeeded: vec![],
+            failed: vec![
+                ModelFailure {
+                    label: "#0 first".into(),
+                    error: "conversion: unsupported op\nnode: bad".into(),
+                },
+                ModelFailure {
+                    label: "#1 second".into(),
+                    error: "comparison: mismatch".into(),
+                },
+            ],
+        };
+        assert!(summary.to_string().contains(concat!(
+            "Failed (2):\n",
+            "  FAIL #0 first\n",
+            "    conversion: unsupported op\n",
+            "    node: bad\n\n",
+            "  FAIL #1 second\n",
+            "    comparison: mismatch\n",
+        )));
     }
 }

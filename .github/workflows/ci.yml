@@ -17,8 +17,8 @@ jobs:
   test:
     name: Build & Test (${{ matrix.os }}${{ matrix.cargo_flags && ', coreml' || '' }})
     runs-on: ${{ matrix.os }}
-    # The CoreML job dispatches every integration test through Apple's CoreML
-    # backend; op coverage there may lag the ORT backend, so it reports
+    # The macOS skeleton sweep and curated validation explicitly use CoreML;
+    # op coverage there may lag the ORT backend, so it reports
     # without blocking until it has a green track record.
     continue-on-error: ${{ matrix.experimental || false }}
     # The macOS sweep has taken 50+ min when a rustnn regression makes CoreML
@@ -31,19 +31,22 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
+            test_backend: ort
             ort_archive: onnxruntime-linux-x64
             ort_ext: tgz
             ort_dylib: lib/libonnxruntime.so
           - os: windows-latest
+            test_backend: ort
             ort_archive: onnxruntime-win-x64
             ort_ext: zip
             ort_dylib: lib/onnxruntime.dll
           - os: macos-latest
+            test_backend: coreml
             ort_archive: onnxruntime-osx-arm64
             ort_ext: tgz
             ort_dylib: lib/libonnxruntime.dylib
-            # rustnn selects the CoreML backend automatically on macOS when
-            # the feature is compiled in (ORT still serves as the reference).
+            # CoreML is available through this feature and selected explicitly
+            # by the sweep and curated-validation commands below.
             cargo_flags: --features coreml
             experimental: true
             # CoreML graph compiles peak at ~5 GB for the largest sweep
@@ -132,6 +135,10 @@ jobs:
       - name: Build
         run: cargo build --release --locked ${{ matrix.cargo_flags }}
 
+      - name: Check generated operator views
+        if: runner.os == 'Linux'
+        run: O2W_CATALOG_BIN=target/release/onnx2webnn python3 scripts/generate_operator_catalog.py --check
+
       # tests/model_skeletons.rs converts the transformers.js exports in
       # tests/models/manifest.json. With CI set it builds weight-stripped
       # skeletons from the Hugging Face Hub with range requests (graph and
@@ -152,6 +159,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           O2W_MODEL_TEST_JOBS: ${{ matrix.model_test_jobs || 2 }}
           O2W_MODEL_TEST_SKIP_HEAVY: 1
+          O2W_TEST_BACKEND: ${{ matrix.test_backend }}
         run: cargo test --release --locked ${{ matrix.cargo_flags }}
 
       - name: Validate curated full model
@@ -161,7 +169,7 @@ jobs:
           O2W_ONNX_CACHE: ${{ runner.temp }}/onnx2webnn-ci-models
           O2W_WEBNN_CACHE: ${{ runner.temp }}/onnx2webnn-ci-webnn
         run: |
-          target/release/onnx2webnn validate-models \
+          target/release/onnx2webnn --backend ${{ matrix.test_backend }} validate-models \
             --manifest tests/models/ci-validation.json \
             --selection all \
             --weights real \

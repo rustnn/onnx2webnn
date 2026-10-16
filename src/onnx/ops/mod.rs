@@ -25,6 +25,7 @@ use std::sync::OnceLock;
 
 pub mod activation;
 pub mod attention;
+pub mod catalog;
 pub mod comparison;
 pub mod conditional;
 pub mod conv;
@@ -145,6 +146,8 @@ pub fn empty_value_shape_dims() -> &'static HashMap<String, Vec<rustnn::graph::D
 pub struct ConversionResult {
     /// ONNX output name -> data type (for downstream shape inference)
     pub output_types: HashMap<String, rustnn::DataType>,
+    /// Override the catalog's general class when this node used a conditional lowering.
+    pub lowering: Option<catalog::LoweringPath>,
 }
 
 /// Trait for handling ONNX operator conversion
@@ -206,7 +209,8 @@ impl OpRegistry {
     /// custom-domain handlers are added, this should take `(domain, op_type)` so the pre-scan in
     /// `convert_with_builder` stays aligned with [`convert_node`].
     pub fn is_supported(&self, op_type: &str) -> bool {
-        self.handlers.iter().any(|h| h.supports(op_type))
+        catalog::capability(op_type).is_some_and(|entry| entry.status != "Unsupported")
+            && self.handlers.iter().any(|h| h.supports(op_type))
     }
 
     /// Collect every graph node whose `op_type` has no registered handler.
@@ -409,8 +413,10 @@ pub fn convert_handler_with_context(
     use crate::onnx::builder::{map_rustnn_error, OnnxBuilder};
     use rustnn::mlcontext::{MLContext, MLGraphBuilder};
 
-    let mut ml_context = MLContext::create(&crate::onnx::convert::backend_context_options())
-        .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
+    let mut ml_context = MLContext::create(&crate::onnx::convert::backend_context_options(
+        crate::onnx::convert::BackendChoice::Ort,
+    )?)
+    .map_err(|e| OnnxError::ShapeInference(format!("MLContext::create failed: {e}")))?;
     let mut ml_builder = MLGraphBuilder::new(&mut ml_context).map_err(map_rustnn_error)?;
     let mut builder = OnnxBuilder::new(&mut ml_builder);
     for input in node.input.iter() {

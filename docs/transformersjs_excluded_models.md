@@ -1,95 +1,74 @@
 # Transformers.js Excluded Models
 
-> **Last edited:** `2026-09-23T11:35:58Z`<br>
-> **Checkout:** `fkrall/cache-backed-validation` at `ac6d5ca`
+> **Last edited:** `2026-10-16T18:05:10Z`<br>
+> **Checkout:** `validation-enhancements` at `afb644f`
 >
 > **Freshness:** Use this document only when this provenance is recent relative to the relevant
 > code and commits; otherwise verify the implementation, tests, and Git history before relying
 > on it.
 
-This document records model exports currently excluded from onnx2webnn's generated sweep because
-of unsupported operators, unsupported operator forms, unresolved dimensions, or conversion defects.
-For the complete operator-level capability matrix, see
-[Operator conversion status](operator-conversion-status.md).
+[`scripts/generate_manifest.py`](../scripts/generate_manifest.py) reads this exclusion list.
+Headings identify repositories; backticked `onnx/<component>*.onnx` patterns exclude only matching
+components. Without a pattern, the whole repository is excluded. Reasons are informational, not
+parsed. See [operator status](operator-conversion-status.md) for general support.
 
-The [`scripts/generate_manifest.py` generator](../scripts/generate_manifest.py) reads this document
-when regenerating [`tests/models/manifest.json`](../tests/models/manifest.json). A
-`## [org/repo](https://huggingface.co/org/repo)` section identifies a repository. Backticked
-`onnx/<component>*.onnx` references exclude only those component stems; a section without any such
-reference excludes the whole repository. The explanatory operator and error text is not parsed.
-
-An exclusions-disabled skeleton audit on 23 September 2026 found no listed component that became
-fully supported on the current branch. Generated cases retained a blocker, except that NLLB's
-decode/cache branch passed while its prefill branch still failed. Entries requiring unresolved or
-model-specific realistic dimensions were not fully re-audited and retain their previous diagnosis.
+The 23 September 2026 skeleton audit found no fully supported excluded component. Some entries
+with unresolved dimensions were not fully retested.
 
 ## [onnx-community/dpt-dinov2-small-kitti](https://huggingface.co/onnx-community/dpt-dinov2-small-kitti)
 
-- ONNX model: `onnx/model*.onnx`
-- Unsupported operators:
-  - `Resize` (mode=cubic) — bicubic position-embedding interpolation; WebNN resample2d supports only nearest/linear
+- `onnx/model*.onnx`: cubic `Resize`; WebNN supports nearest/linear.
 
 ## [onnx-community/Kokoro-82M-v1.0-ONNX](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX)
 
-- ONNX model: `onnx/model*.onnx`
-- Unsupported operators:
-  - `STFT`, `Atan`, `NonZero`, and others — vocoder signal-processing ops; `NonZero` has data-dependent output shapes and cannot be expressed in a static WebNN graph
-  - the quantized export additionally uses the com.microsoft fusions `DynamicQuantizeLSTM`, `SkipLayerNormalization`, `FastGelu` and `FusedMatMul`
+- `onnx/model*.onnx`: `STFT`, `Atan`, `NonZero`; q8 also uses unsupported ORT fusions
+  `DynamicQuantizeLSTM`, `SkipLayerNormalization`, `FastGelu`, and `FusedMatMul`.
 
 ## [onnx-community/grounding-dino-tiny-ONNX](https://huggingface.co/onnx-community/grounding-dino-tiny-ONNX)
 
-- ONNX model: `onnx/model*.onnx`
-- Unsupported operators:
-  - `NonZero` — data-dependent output shape, not expressible in a static WebNN graph
-  - `GridSample`, `EyeLike` — no WebNN equivalent yet
+- `onnx/model*.onnx`: data-dependent `NonZero`; unsupported `GridSample` and `EyeLike`.
 
 ## [onnx-community/Janus-Pro-1B-ONNX](https://huggingface.co/onnx-community/Janus-Pro-1B-ONNX)
 
-- `onnx/prepare_inputs_embeds*.onnx` — `NonZero` (image-token scatter); data-dependent shape (the other seven exports convert)
+- `onnx/prepare_inputs_embeds*.onnx`: data-dependent `NonZero`; other exports convert.
 
 ## [huggingworld/Qwen2.5-VL-3B-Instruct-ONNX](https://huggingface.co/huggingworld/Qwen2.5-VL-3B-Instruct-ONNX)
 
-- `onnx/vision_encoder*.onnx` — `TopK`/`NonZero` in the window-sorting rotary code (data-dependent) and `MultiHeadAttention` (embed_tokens and the decoder convert)
+- `onnx/vision_encoder*.onnx`: `TopK`, `NonZero`, `MultiHeadAttention`; embed_tokens/decoder convert.
 
 ## [Xenova/musicgen-small](https://huggingface.co/Xenova/musicgen-small)
 
-- `onnx/build_delay_pattern_mask*.onnx` — `NonZero`; data-dependent shape
-- `onnx/encodec_decode*.onnx` — pad amounts computed with float division and `Ceil` are not constant-folded; the quantized export also uses `DynamicQuantizeLSTM` (text_encoder and decoder_model_merged convert)
+- `onnx/build_delay_pattern_mask*.onnx`: data-dependent `NonZero`.
+- `onnx/encodec_decode*.onnx`: dynamic pads; q8 also uses `DynamicQuantizeLSTM`.
 
 ## [onnx-community/sam3-tracker-ONNX](https://huggingface.co/onnx-community/sam3-tracker-ONNX)
 
-- `onnx/vision_encoder*.onnx` — shape propagation mismatch in the windowed attention layers (one operand tracked as 9216 rows instead of 9); open
-- `onnx/prompt_encoder_mask_decoder*.onnx` — `Range` with a non-constant limit after the empty-point/box branches
+- `onnx/vision_encoder*.onnx`: windowed-attention shape mismatch (9216 vs. 9 rows).
+- `onnx/prompt_encoder_mask_decoder*.onnx`: nonconstant `Range` limit.
 
 ## [Xenova/RTMO-l](https://huggingface.co/Xenova/RTMO-l)
 
-- ONNX model: `onnx/model*.onnx`
-- Unsupported operators: `TopK`, `NonMaxSuppression` — detection post-processing with data-dependent output shapes
+- `onnx/model*.onnx`: data-dependent `TopK`/`NonMaxSuppression` detection output.
 
 ## [Xenova/movenet-singlepose-thunder](https://huggingface.co/Xenova/movenet-singlepose-thunder)
 
-- ONNX model: `onnx/model*.onnx`
-- Shape inference fails in the keypoint post-processing: `Incompatible static dimensions for broadcasting: 17 vs 2` (17 keypoints vs. 2 coordinates); open
+- `onnx/model*.onnx`: keypoint broadcast mismatch (17 vs. 2 dimensions).
 
 ## [Xenova/bart-large-mnli](https://huggingface.co/Xenova/bart-large-mnli)
 
-- ONNX model: `onnx/model*.onnx`
-- Unsupported operators: `NonZero` (EOS-token pooling); data-dependent shape
+- `onnx/model*.onnx`: data-dependent `NonZero` in EOS-token pooling.
 
 ## [D4ve-R/wavlm-base-plus-sv](https://huggingface.co/D4ve-R/wavlm-base-plus-sv)
 
-- ONNX model: `onnx/model*.onnx`
-- Graph conversion fails on the TDNN layers' N-D-index `Gather` (`gather axis 4 out of bounds for rank 3`); reported to rustnn. Needs a realistic raw-audio length (≥ 400 samples) to get that far
+- `onnx/model*.onnx`: TDNN `Gather` axis 4 exceeds rank 3; probe needs ≥400 audio samples.
 
 ## [BricksDisplay/silero-vad-6.2](https://huggingface.co/BricksDisplay/silero-vad-6.2)
 
-- ONNX model: `onnx/model*.onnx`
-- Pinning `sr` inlines the sample-rate `If`, but the branches contain further `If`s gated on tensor shapes that are not folded; inputs use unnamed dims (`input_dim0`, `input_dim1`, `state_dim1`)
+- `onnx/model*.onnx`: pinning `sr` leaves shape-gated `If` branches unresolved.
 
 ## [Xenova/4x_APISR_GRL_GAN_generator-onnx](https://huggingface.co/Xenova/4x_APISR_GRL_GAN_generator-onnx)
 
-- ONNX model: `onnx/model*.onnx`
-- Window-partition `Reshape` target is folded to rank 4 where a rank-6 view is expected (`Transpose permutation length 6 must match input rank 1`); open
+- `onnx/model*.onnx`: window-partition reshape has wrong rank (4 vs. 6).
 
 ## [AdamCodd/distilroberta-nsfw-prompt-stable-diffusion](https://huggingface.co/AdamCodd/distilroberta-nsfw-prompt-stable-diffusion)
 
@@ -97,15 +76,14 @@ model-specific realistic dimensions were not fully re-audited and retain their p
 
 ## [Mozilla/distilvit](https://huggingface.co/Mozilla/distilvit)
 
-- `onnx/decoder_model_merged*.onnx` — the cached-attention `If` branch's `Reshape` shape input (`.../attn/Concat_*_output_0`) is not constant-folded, so its target shape can't be resolved from the branch's `Transpose` output; open (encoder_model converts)
+- `onnx/decoder_model_merged*.onnx`: cache-branch reshape target is not constant-folded;
+  encoder converts.
 
 ## [onnx-community/pyannote-segmentation-3.0](https://huggingface.co/onnx-community/pyannote-segmentation-3.0)
 
-- ONNX model: `onnx/model*.onnx`
-- Unsupported operators: the quantized export uses the com.microsoft fusion `DynamicQuantizeLSTM` (four LSTM layers)
+- `onnx/model*.onnx`: q8 export uses unsupported `DynamicQuantizeLSTM`.
 
 ## [Xenova/nllb-200-distilled-600M](https://huggingface.co/Xenova/nllb-200-distilled-600M)
 
-- `onnx/decoder_model_merged*.onnx` — the shared output-embedding bias reshape mis-derives its target shape from `decoder_sequence_length` instead of the vocab size, producing an incompatible broadcast (`decoder_sequence_length` vs. 256206); open. The decode/cache
-  branch builds, but the prefill branch still fails, so the component remains excluded
-  (encoder_model converts).
+- `onnx/decoder_model_merged*.onnx` — prefill fails: bias reshape uses `decoder_sequence_length`
+  instead of vocab size 256206. Decode builds; encoder converts.

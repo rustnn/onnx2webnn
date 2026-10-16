@@ -5,11 +5,12 @@
 //! End-to-end cache export, reload, dispatch, and native ORT comparison.
 
 use std::fs;
+use std::process::Command;
 
 use onnx2webnn::onnx::test_models::prelude::*;
 use onnx2webnn::{
-    cache_onnx_model, convert_onnx, validate_cached_model, validate_cached_model_with_options,
-    ConvertOptions,
+    cache_onnx_model, convert_onnx, export_onnx, validate_cached_model,
+    validate_cached_model_with_options, ConvertOptions,
 };
 use prost::Message;
 
@@ -46,6 +47,166 @@ fn saved_add_graph_reloads_and_matches_native_ort() {
             .output_count,
         1
     );
+}
+
+#[test]
+fn scale_aware_quantized_feed_reloads_and_matches_native_ort() {
+    let dir = tempfile::tempdir().expect("temporary cache");
+    let source = dir.path().join("quantized.onnx");
+    let webnn = dir.path().join("quantized.webnn");
+    let fixture = model(
+        13,
+        graph(
+            "quantized_feed",
+            vec![f32_input("x", &[17])],
+            vec![f32_output("y", &[17])],
+            vec![
+                node("QuantizeLinear", "q", &["x", "scale", "zp"], &["q"], &[]),
+                node("DequantizeLinear", "dq", &["q", "scale", "zp"], &["y"], &[]),
+            ],
+            vec![f32_init("scale", &[], &[0.25]), u8_init("zp", &[], &[128])],
+        ),
+    );
+    fs::write(&source, fixture.encode_to_vec()).expect("write ONNX fixture");
+    convert_onnx(
+        &source,
+        ConvertOptions {
+            output_path: Some(webnn.clone()),
+            ..ConvertOptions::default()
+        },
+    )
+    .expect("convert quantized graph");
+    validate_cached_model(&source, &webnn).expect("compare scale-aware feed after reload");
+}
+
+#[test]
+fn uncompiled_export_reloads_and_matches_native_ort() {
+    let dir = tempfile::tempdir().expect("temporary export directory");
+    let source = dir.path().join("source.onnx");
+    let webnn = dir.path().join("portable.webnn");
+    let fixture = model(
+        17,
+        graph(
+            "identity",
+            vec![f32_input("x", &[1, 2])],
+            vec![f32_output("y", &[1, 2])],
+            vec![node("Identity", "identity", &["x"], &["y"], &[])],
+            vec![],
+        ),
+    );
+    fs::write(&source, fixture.encode_to_vec()).expect("write fixture");
+    export_onnx(
+        &source,
+        ConvertOptions {
+            output_path: Some(webnn.clone()),
+            ..ConvertOptions::default()
+        },
+    )
+    .expect("export without backend build");
+    assert!(webnn.exists());
+    assert!(webnn.with_extension("safetensors").exists());
+    validate_cached_model(&source, &webnn).expect("reload and run exported graph");
+}
+
+#[test]
+fn cli_export_only_skips_backend_build() {
+    let dir = tempfile::tempdir().expect("temporary export directory");
+    let source = dir.path().join("source.onnx");
+    let fixture = model(
+        17,
+        graph(
+            "identity",
+            vec![f32_input("x", &[1])],
+            vec![f32_output("y", &[1])],
+            vec![node("Identity", "identity", &["x"], &["y"], &[])],
+            vec![],
+        ),
+    );
+    fs::write(&source, fixture.encode_to_vec()).expect("write fixture");
+    let output = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
+        .args(["convert", "--input"])
+        .arg(&source)
+        .arg("--no-backend-graph-build")
+        .env("ORT_DYLIB_PATH", dir.path().join("missing-onnxruntime.so"))
+        .env("O2W_ONNX_CACHE", dir.path().join("onnx"))
+        .env("O2W_WEBNN_CACHE", dir.path().join("webnn"))
+        .output()
+        .expect("run converter");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("portable WebNN export succeeded"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("no backend build"), "{stdout}");
+    assert_eq!(fs::read_dir(dir.path().join("webnn")).unwrap().count(), 2);
+
+    let rejected = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
+        .args(["--backend", "trtx", "convert", "--input"])
+        .arg(&source)
+        .arg("--no-backend-graph-build")
+        .output()
+        .expect("run converter");
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("backend-independent"));
+
+    let removed_flag = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
+        .args(["convert", "--input"])
+        .arg(&source)
+        .arg("--output")
+        .output()
+        .expect("run converter");
+    assert!(!removed_flag.status.success());
+    assert!(
+        String::from_utf8_lossy(&removed_flag.stderr).contains("unexpected argument '--output'")
+    );
+
+    if !cfg!(feature = "trtx") {
+        let unavailable = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
+            .args(["--backend", "trtx", "convert", "--input"])
+            .arg(&source)
+            .output()
+            .expect("run converter");
+        assert!(!unavailable.status.success());
+        assert!(String::from_utf8_lossy(&unavailable.stderr)
+            .contains("trtx requires a build with --features trtx"));
+    }
+}
+
+#[test]
+fn cli_validate_exports_and_builds_without_an_export_flag() {
+    let dir = tempfile::tempdir().expect("temporary cache");
+    let source = dir.path().join("source.onnx");
+    let fixture = model(
+        17,
+        graph(
+            "identity",
+            vec![f32_input("x", &[1])],
+            vec![f32_output("y", &[1])],
+            vec![node("Identity", "identity", &["x"], &["y"], &[])],
+            vec![],
+        ),
+    );
+    fs::write(&source, fixture.encode_to_vec()).expect("write fixture");
+    let result = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
+        .args(["convert", "--input"])
+        .arg(&source)
+        .arg("--validate")
+        .env("O2W_ONNX_CACHE", dir.path().join("onnx"))
+        .env("O2W_WEBNN_CACHE", dir.path().join("webnn"))
+        .output()
+        .expect("run converter");
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(String::from_utf8_lossy(&result.stdout).contains("deterministic validation passed"));
+    assert_eq!(fs::read_dir(dir.path().join("webnn")).unwrap().count(), 2);
 }
 
 #[test]

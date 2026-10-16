@@ -50,7 +50,7 @@ impl OpHandler for PoolHandler {
             "unnamed".to_string()
         };
 
-        match op_type {
+        let mut result = match op_type {
             "MaxPool" => self.convert_pool(node, &node_name, context, b, PoolKind::Max),
             "AveragePool" => self.convert_pool(node, &node_name, context, b, PoolKind::Average),
             "LpPool" => {
@@ -70,7 +70,12 @@ impl OpHandler for PoolHandler {
                 self.convert_global_pool(node, &node_name, context, b, PoolKind::Average)
             }
             _ => Err(OnnxError::unsupported_op(op_type.to_string(), node_name)),
+        }?;
+        if context.input_rank(node.input.first().map(String::as_str).unwrap_or_default()) == Some(3)
+        {
+            result.lowering = Some(crate::onnx::ops::catalog::LoweringPath::Decomposed);
         }
+        Ok(result)
     }
 }
 

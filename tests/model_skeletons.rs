@@ -36,7 +36,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use common::manifest::{load_manifest, Entry};
 use common::skeleton::{strip_model, FileSource, HubSource, KEEP_BYTES};
 use onnx2webnn::protos::onnx::ModelProto;
-use onnx2webnn::{convert_model_proto, convert_onnx, ConvertOptions};
+use onnx2webnn::{
+    convert_model_proto, convert_model_proto_with_backend, convert_onnx_with_backend,
+    BackendChoice, ConvertOptions,
+};
 use prost::Message;
 
 enum Source {
@@ -137,6 +140,10 @@ impl Sweep {
 
     fn convert(&self, idx: usize, entry: &Entry) {
         let label = entry.label(idx);
+        let backend: BackendChoice = std::env::var("O2W_TEST_BACKEND")
+            .unwrap_or_else(|_| "ort".into())
+            .parse()
+            .expect("O2W_TEST_BACKEND must be ort, coreml, or trtx");
         let options = ConvertOptions {
             free_dim_overrides: entry.override_dims.clone(),
             optimize: true,
@@ -147,13 +154,13 @@ impl Sweep {
         };
         let started = std::time::Instant::now();
         let result = match &self.source {
-            Source::Dir(dir) => convert_onnx(dir.join(&entry.file), options)
+            Source::Dir(dir) => convert_onnx_with_backend(dir.join(&entry.file), options, backend)
                 .map(|_| String::new())
                 .map_err(|e| e.to_string()),
             Source::Hub | Source::StripDir(_) => self.skeleton(entry).and_then(|(bytes, note)| {
                 let model =
                     ModelProto::decode(&bytes[..]).map_err(|e| format!("decode skeleton: {e}"))?;
-                convert_model_proto(model, &options)
+                convert_model_proto_with_backend(model, &options, backend)
                     .map(|_| note)
                     .map_err(|e| e.to_string())
             }),

@@ -1,12 +1,5 @@
 # onnx2webnn
 
-> **Last edited:** `2026-10-19T16:59:19Z`<br>
-> **Checkout:** `validation-enhancements` at `f0fb3dd`
->
-> **Freshness:** Use this document only when this provenance is recent relative to the relevant
-> code and commits; otherwise verify the implementation, tests, and Git history before relying
-> on it.
-
 onnx2webnn lowers ONNX opsets **1–26** through [RustNN](../rustnn)'s WebNN builder. `convert`
 builds the graph with CPU ORT by default; `--backend coreml` or `--backend trtx` selects an
 available alternative.

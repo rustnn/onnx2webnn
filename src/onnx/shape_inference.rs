@@ -65,13 +65,11 @@ pub fn infer_static_shapes(
     let graph = model.graph.as_ref().unwrap();
     let initializer_names: HashSet<String> = graph
         .initializer
-        .as_slice()
         .iter()
         .map(|i| i.name.as_str().to_string())
         .collect();
     let initializers: HashMap<String, &TensorProto> = graph
         .initializer
-        .as_slice()
         .iter()
         .map(|init| (init.name.clone(), init))
         .collect();
@@ -2020,11 +2018,75 @@ fn dims_contain_dynamic(dims: &[Dimension]) -> bool {
     dims.iter().any(|d| matches!(d, Dimension::Dynamic(_)))
 }
 
+// Cancel copied dimensions before resolving -1; bounds need not be divisible
+// by the reshape's factors even when every valid runtime input is.
+fn resolve_dynamic_reshape(input: &[Dimension], target: &[i64]) -> Option<Vec<Dimension>> {
+    if target.iter().filter(|&&d| d == -1).count() > 1 {
+        return None;
+    }
+    let mut remaining = input.to_vec();
+    let mut divisor = 1u32;
+    let mut output = Vec::with_capacity(target.len());
+    for (axis, &size) in target.iter().enumerate() {
+        let dim = match size {
+            -1 => {
+                output.push(Dimension::Static(1));
+                continue;
+            }
+            0 => input.get(axis)?.clone(),
+            n if n > 0 => Dimension::Static(u32::try_from(n).ok()?),
+            _ => return None,
+        };
+        if let Some(index) = remaining.iter().position(|d| d == &dim) {
+            remaining.remove(index);
+        } else if let Dimension::Static(n) = dim {
+            divisor = divisor.checked_mul(n)?;
+        } else {
+            return None;
+        }
+        output.push(dim);
+    }
+    if let Some(index) = target.iter().position(|&d| d == -1) {
+        let mut factor = 1u32;
+        let mut dynamic = None;
+        for dim in remaining {
+            match dim {
+                Dimension::Static(n) if n > 0 => factor = factor.checked_mul(n)?,
+                Dimension::Dynamic(d) if dynamic.is_none() => dynamic = Some(d),
+                _ => return None,
+            }
+        }
+        output[index] = if let Some(d) = dynamic {
+            if factor % divisor == 0 {
+                combine_binary_dimension("Mul", &d, i64::from(factor / divisor), true)?
+            } else if divisor % factor == 0 {
+                combine_binary_dimension("Div", &d, i64::from(divisor / factor), true)?
+            } else {
+                return None;
+            }
+        } else if factor % divisor == 0 {
+            Dimension::Static(factor / divisor)
+        } else {
+            return None;
+        };
+    } else {
+        let product = remaining.iter().try_fold(1u32, |product, dim| match dim {
+            Dimension::Static(n) => product.checked_mul(*n),
+            _ => None,
+        })?;
+        if product != divisor {
+            return None;
+        }
+    }
+    Some(output)
+}
+
 /// Propagate `value_shape_dims` through shape-preserving ONNX ops so downstream
 /// Shape/Gather/Concat/Reshape chains retain dynamic batch/sequence metadata.
 fn propagate_dynamic_dims_metadata(
     graph: &GraphProto,
     value_shape_dims: &mut HashMap<String, Vec<Dimension>>,
+    const_values: &HashMap<String, Vec<i64>>,
 ) {
     const PRESERVE_INPUT_SHAPE: &[&str] = &[
         "Abs",
@@ -2062,6 +2124,94 @@ fn propagate_dynamic_dims_metadata(
             }
 
             let op_type = node.op_type.as_str();
+            let structural_dims = (|| {
+                if const_values.contains_key(node.input.first()?) {
+                    return None;
+                }
+                let input = value_shape_dims_for(node.input.first()?, value_shape_dims)?;
+                if !dims_contain_dynamic(input) {
+                    return None;
+                }
+                let axes = || {
+                    node.attribute
+                        .iter()
+                        .find(|a| a.name == "axes")
+                        .map(|a| a.ints.clone())
+                        .or_else(|| const_values.get(node.input.get(1)?).cloned())
+                };
+                match op_type {
+                    "Reshape"
+                        if !node
+                            .attribute
+                            .iter()
+                            .any(|a| a.name == "allowzero" && a.i != 0) =>
+                    {
+                        resolve_dynamic_reshape(input, const_values.get(node.input.get(1)?)?)
+                    }
+                    "Transpose" => {
+                        let perm = node
+                            .attribute
+                            .iter()
+                            .find(|a| a.name == "perm")
+                            .map(|a| a.ints.clone())
+                            .unwrap_or_else(|| (0..input.len() as i64).rev().collect());
+                        perm.iter()
+                            .map(|&i| input.get(usize::try_from(i).ok()?).cloned())
+                            .collect()
+                    }
+                    "Unsqueeze" => {
+                        let axes = axes()?;
+                        let rank = input.len() + axes.len();
+                        let mut normalized: Vec<usize> = axes
+                            .iter()
+                            .map(|&a| usize::try_from(if a < 0 { a + rank as i64 } else { a }).ok())
+                            .collect::<Option<_>>()?;
+                        normalized.sort_unstable();
+                        normalized.dedup();
+                        if normalized.len() != axes.len() || normalized.iter().any(|&a| a >= rank) {
+                            return None;
+                        }
+                        let mut dims = input.to_vec();
+                        for axis in normalized {
+                            dims.insert(axis, Dimension::Static(1));
+                        }
+                        Some(dims)
+                    }
+                    "Squeeze" => {
+                        let axes = axes().unwrap_or_else(|| {
+                            input
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(i, d)| {
+                                    (*d == Dimension::Static(1)).then_some(i as i64)
+                                })
+                                .collect()
+                        });
+                        let mut dims = input.to_vec();
+                        let mut normalized: Vec<usize> = axes
+                            .iter()
+                            .map(|&a| {
+                                usize::try_from(if a < 0 { a + input.len() as i64 } else { a }).ok()
+                            })
+                            .collect::<Option<_>>()?;
+                        normalized.sort_unstable();
+                        normalized.dedup();
+                        for axis in normalized.into_iter().rev() {
+                            if dims.get(axis)? != &Dimension::Static(1) {
+                                return None;
+                            }
+                            dims.remove(axis);
+                        }
+                        Some(dims)
+                    }
+                    _ => None,
+                }
+            })();
+            if let Some(dims) = structural_dims {
+                value_shape_dims.insert(out.to_string(), dims);
+                changed = true;
+                continue;
+            }
             let input_dims = if op_type == "MatMul" || op_type == "Gemm" {
                 node.input
                     .as_slice()
@@ -4101,7 +4251,7 @@ pub fn propagate_shapes_and_fold_constants(
                 }
 
                 if iteration == max_iterations - 1 {
-                    crate::debug_println!(
+                    log::debug!(
                         "Warning: Shape propagation reached max iterations ({}/{})",
                         value_shapes.len(),
                         graph.node.as_slice().len()
@@ -4161,7 +4311,7 @@ pub fn propagate_shapes_and_fold_constants(
 
         let fold_opts = FoldShapeConstantsOptions::from_propagate(options);
         if options.experimental_dynamic_inputs {
-            propagate_dynamic_dims_metadata(graph, value_shape_dims);
+            propagate_dynamic_dims_metadata(graph, value_shape_dims, const_values);
         }
         if fold_shape_constants(
             graph,
@@ -4185,6 +4335,50 @@ pub fn propagate_shapes_and_fold_constants(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dynamic_reshape_cancels_copied_spatial_dimensions() {
+        let h = Dimension::Dynamic(DynamicDimension {
+            name: "h".into(),
+            max_size: 65_535,
+        });
+        let w = Dimension::Dynamic(DynamicDimension {
+            name: "w".into(),
+            max_size: 65_535,
+        });
+        let input = vec![
+            Dimension::Static(1),
+            Dimension::Static(3),
+            h,
+            Dimension::Static(1),
+            w,
+        ];
+        let first = resolve_dynamic_reshape(&input, &[0, 0, -1, 2, 0]).unwrap();
+        assert_eq!(
+            first[2],
+            Dimension::Dynamic(DynamicDimension {
+                name: "h / 2".into(),
+                max_size: 32_767
+            })
+        );
+        let second = resolve_dynamic_reshape(&first, &[0, 0, 0, 0, -1, 2]).unwrap();
+        let transposed: Vec<_> = [0, 1, 3, 5, 2, 4]
+            .iter()
+            .map(|&i| second[i].clone())
+            .collect();
+        let final_shape = resolve_dynamic_reshape(&transposed, &[0, -1, 1, 1, 0, 0]).unwrap();
+        assert_eq!(final_shape[1], Dimension::Static(12));
+        assert_eq!(final_shape[4], first[2]);
+        assert_eq!(
+            final_shape[5],
+            Dimension::Dynamic(DynamicDimension {
+                name: "w / 2".into(),
+                max_size: 32_767
+            })
+        );
+        assert!(resolve_dynamic_reshape(&input, &[-1, -1]).is_none());
+        assert!(resolve_dynamic_reshape(&[Dimension::Static(3)], &[-1, 2]).is_none());
+    }
 
     #[test]
     fn dynamic_dim_requires_override() {

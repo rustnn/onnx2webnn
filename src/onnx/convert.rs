@@ -355,7 +355,7 @@ fn prune_empty_graph_outputs(model: &mut ModelProto) {
     graph
         .initializer
         .retain(|t| !t.dims.contains(&0) || consumed.contains(&t.name));
-    crate::debug_println!(
+    log::debug!(
         "[CONVERT] Dropped {} zero-size graph output(s)",
         before - graph.output.len()
     );
@@ -434,7 +434,7 @@ fn prune_dead_nodes(graph: &mut crate::protos::onnx::GraphProto) {
     graph
         .initializer
         .retain(|t| needed.contains(&t.name) || input_names.contains(t.name.as_str()));
-    crate::debug_println!("[if-inline] pruned {dropped} dead node(s)");
+    log::debug!("[if-inline] pruned {dropped} dead node(s)");
 }
 
 /// Drop graph inputs no node consumes (e.g. the KV cache of an inlined
@@ -781,7 +781,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
             }
 
             if !has_data {
-                crate::debug_println!("Warning: Skipping initializer '{}' with no data", name);
+                log::debug!("Warning: Skipping initializer '{}' with no data", name);
                 continue;
             }
 
@@ -820,6 +820,19 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 continue;
             }
             initializers_map.insert(initializer.name.as_str().to_string(), initializer);
+        }
+        for node in &onnx_graph.node {
+            if node.op_type == "Constant" {
+                if let (Some(output), Some(tensor)) = (
+                    node.output.first(),
+                    node.attribute
+                        .iter()
+                        .find(|a| a.name == "value")
+                        .and_then(|a| a.t.as_ref()),
+                ) {
+                    initializers_map.insert(output.clone(), tensor);
+                }
+            }
         }
 
         // Build value_shapes map from value_info and inputs for shape inference
@@ -1165,14 +1178,14 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         // earlier wrong values (e.g., Where operation heuristics)
                         if k.contains("rotary") && k.contains("Where") {
                             if let Some(old_val) = const_values.get(&k) {
-                                crate::debug_println!(
+                                log::debug!(
                                     "[CONVERT] Overwriting {} from {:?} to {:?}",
                                     k,
                                     old_val,
                                     v
                                 );
                             } else {
-                                crate::debug_println!("[CONVERT] Inserting new {} = {:?}", k, v);
+                                log::debug!("[CONVERT] Inserting new {} = {:?}", k, v);
                             }
                         }
                         const_values.insert(k, v);
@@ -1190,7 +1203,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                             .unwrap_or_else(|| dynamic_max_for_dim(&dim));
                         inference_overrides.insert(dim.clone(), fallback);
                         dynamic_inference_attempts.insert(dim.clone());
-                        crate::debug_println!(
+                        log::debug!(
                             "[CONVERT] Retrying static shape inference with inferred override {}={} \
                              (required by input '{}')",
                             dim,
@@ -1199,7 +1212,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         );
                         continue;
                     }
-                    crate::debug_println!(
+                    log::debug!(
                         "[CONVERT] Skipping static shape inference due to unresolved dynamic dim '{}' on input '{}'",
                         dim,
                         input
@@ -1225,7 +1238,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
 
         // DEBUG: Check value before node conversion
         if let Some(val) = const_values.get("/model/rotary_emb/Where_output_0") {
-            crate::debug_println!("[NODE CONV] /model/rotary_emb/Where_output_0 = {:?}", val);
+            log::debug!("[NODE CONV] /model/rotary_emb/Where_output_0 = {:?}", val);
         }
         // O2W_PROBE=<substr>: dump post-propagation shape/const state for
         // matching node outputs (diagnostics only).
@@ -1886,7 +1899,7 @@ fn inline_constant_ifs(model: &mut ModelProto, options: &ConvertOptions) {
                 continue;
             };
 
-            crate::debug_println!(
+            log::debug!(
                 "[if-inline] {} taking {branch_attr} (cond={cond})",
                 node.name
             );
@@ -2089,11 +2102,11 @@ fn prepare_model(
         &options.free_dim_overrides,
     )?;
     if options.optimize {
-        crate::debug_println!("Running constant folding...");
+        log::debug!("Running constant folding...");
         let evaluators = crate::onnx::constant_folding::evaluators::get_evaluators();
         let nodes_folded =
             crate::onnx::constant_folding::fold_constants_in_model(&mut model, &evaluators)?;
-        crate::debug_println!("Constant folding: {} nodes folded", nodes_folded);
+        log::debug!("Constant folding: {} nodes folded", nodes_folded);
     }
     inline_constant_ifs(&mut model, options);
     if !options.pinned_inputs.is_empty() {

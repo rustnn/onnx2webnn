@@ -1154,7 +1154,7 @@
   {
     "name": "Reshape",
     "status": "Direct WebNN",
-    "scope": "Direct WebNN reshape; target shape must be build-time resolvable.",
+    "scope": "Direct WebNN reshape; target shape must be build-time resolvable. Experimental dynamic inputs preserve copied symbolic dimensions and resolve -1 when dimension factors cancel to a static size or a single scaled symbol.",
     "perf_impact": "",
     "perf_limited": false,
     "domain": "ai.onnx"

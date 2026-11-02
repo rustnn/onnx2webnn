@@ -87,7 +87,7 @@ dynamic shapes or further specialization.
 | `--pin-input NAME=VALUE` | Freeze a graph input to `true`/`false`/an integer (repeatable) |
 | `--allow-missing-external-data` | Zero-fill external tensors whose data file is absent (weight-stripped skeleton models) |
 | `--experimental-dynamic-inputs` | Preserve unresolved symbolic dims as dynamic metadata |
-| `--debug` | Verbose conversion logging (global) |
+| `--debug` | Debug logging from the converter and rustnn (global); `RUST_LOG` overrides the log filter |
 | `--backend ort\|coreml\|trtx` | Select the graph-build/validation backend (global; default `ort`); CoreML and TensorRT require their Cargo features |
 | `--no-backend-graph-build` | Overwrite cache-backed `.onnx`, `.webnn`, and Safetensors artifacts without compiling a backend graph |
 | `--build-and-export` | Overwrite cache artifacts and compile the selected backend graph without numerical comparison |

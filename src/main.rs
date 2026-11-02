@@ -223,12 +223,19 @@ fn cache_paths(input: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let default_filter = if cli.debug { "debug" } else { "warn" };
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_filter)),
+        )
+        .with_writer(std::io::stderr)
+        .init();
     let backend = cli.backend;
     if !matches!(cli.cmd, Command::OperatorCatalog) {
         std::env::set_var("O2W_OPERATOR_REPORT", "1");
     }
     if cli.debug {
-        onnx2webnn::debug::enable();
         std::env::set_var("O2W_OPERATOR_REPORT_VERBOSE", "1");
     }
 

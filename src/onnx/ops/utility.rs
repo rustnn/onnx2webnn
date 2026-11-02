@@ -1764,7 +1764,7 @@ impl UtilityHandler {
                 // Keep Slice dynamic when ONNX ends input is non-const.
                 ends.get_or_insert(vec![i64::MAX; fallback_len]);
 
-                crate::debug_println!(
+                log::debug!(
                     "[slice] using fallback starts/ends for {}, starts={:?} ends={:?}",
                     node_name,
                     starts,

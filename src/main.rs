@@ -17,6 +17,7 @@
  */
 
 use clap::{Parser, Subcommand};
+use rustnn::mlcontext::Backend;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -26,7 +27,7 @@ use onnx2webnn::model_validation::{run_manifest_validation, RunOptions, WeightMo
 use onnx2webnn::{
     cache_onnx_model, convert_onnx_with_backend, export_onnx,
     validate_cached_model_with_inputs_on_backend, validate_cached_model_with_options_on_backend,
-    BackendChoice, ConvertOptions,
+    ConvertOptions,
 };
 
 #[derive(Parser)]
@@ -40,9 +41,9 @@ struct Cli {
     #[arg(long, global = true)]
     debug: bool,
 
-    /// Execution backend for graph builds and validation (default: ort)
-    #[arg(long, global = true, default_value_t = BackendChoice::Ort)]
-    backend: BackendChoice,
+    /// Execution backend for graph builds and validation
+    #[arg(long, global = true)]
+    backend: Option<Backend>,
 
     #[command(subcommand)]
     cmd: Command,
@@ -55,7 +56,7 @@ enum Command {
     /// Lower ONNX and either build or export the WebNN graph
     Convert {
         /// Input ONNX model path
-        #[arg(long)]
+        #[arg(long, short)]
         input: String,
 
         /// Override a symbolic dimension, e.g. batch_size=1 (repeatable)
@@ -84,10 +85,6 @@ enum Command {
         #[arg(long)]
         experimental_dynamic_inputs: bool,
 
-        /// Export the graph and ONNX model to the OS cache without a backend build
-        #[arg(long, conflicts_with_all = ["validate", "build_and_export"])]
-        no_backend_graph_build: bool,
-
         /// Export cache artifacts and build the selected backend graph without validation
         #[arg(long, conflicts_with_all = ["validate", "validate_cached"])]
         build_and_export: bool,
@@ -97,7 +94,7 @@ enum Command {
         validate: bool,
 
         /// Validate existing cache artifacts only; does not read or convert the source ONNX.
-        #[arg(long, conflicts_with_all = ["validate", "no_backend_graph_build", "build_and_export"])]
+        #[arg(long, conflicts_with_all = ["validate", "build_and_export"])]
         validate_cached: bool,
     },
 
@@ -126,7 +123,7 @@ enum Command {
         #[arg(long = "model", required = true)]
         models: Vec<PathBuf>,
         /// Complete SafeTensors input file, paired by position with each --model
-        #[arg(long = "inputs")]
+        #[arg(long, short)]
         inputs: Vec<PathBuf>,
         /// Symbolic dimension binding shared by every model, NAME=VALUE
         #[arg(long = "override-dim")]
@@ -252,16 +249,10 @@ fn main() -> anyhow::Result<()> {
             allow_missing_external_data,
             optimize,
             experimental_dynamic_inputs,
-            no_backend_graph_build,
             build_and_export,
             validate,
             validate_cached,
         } => {
-            if no_backend_graph_build && backend != BackendChoice::Ort {
-                anyhow::bail!(
-                    "convert --no-backend-graph-build is backend-independent; omit --backend or use --validate instead"
-                );
-            }
             if validate || validate_cached {
                 std::env::set_var("O2W_OPERATOR_REPORT", "1");
             }
@@ -329,23 +320,28 @@ fn main() -> anyhow::Result<()> {
                         webnn_cache.display()
                     ));
                 }
-                println!("Validating cached graph with {backend} backend against native CPU ORT");
-                let summary = validate_cached_model_with_options_on_backend(
-                    &onnx_cache,
-                    &webnn_cache,
-                    &validation_overrides,
-                    &pinned_inputs,
-                    backend,
-                )
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-                println!(
-                    "✓ cached deterministic validation passed ({} inputs, {} outputs)",
-                    summary.input_count, summary.output_count
-                );
+
+                if let Some(backend) = backend {
+                    println!(
+                        "Validating cached graph with {backend:?} backend against native CPU ORT"
+                    );
+                    let summary = validate_cached_model_with_options_on_backend(
+                        &onnx_cache,
+                        &webnn_cache,
+                        &validation_overrides,
+                        &pinned_inputs,
+                        backend,
+                    )
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    println!(
+                        "✓ cached deterministic validation passed ({} inputs, {} outputs)",
+                        summary.input_count, summary.output_count
+                    );
+                }
                 return Ok(());
             }
 
-            let cache_paths = (no_backend_graph_build || build_and_export || validate)
+            let cache_paths = (backend.is_none() || build_and_export || validate)
                 .then(|| cache_paths(input_path))
                 .transpose()?;
             if let Some((onnx_cache, _)) = &cache_paths {
@@ -362,24 +358,27 @@ fn main() -> anyhow::Result<()> {
                 output_path: cache_paths.as_ref().map(|(_, webnn)| webnn.clone()),
             };
 
-            if no_backend_graph_build {
-                export_onnx(input_path, options).map_err(|e| anyhow::anyhow!("{e}"))?;
-                println!("✓ portable WebNN export succeeded for {input} (no backend build)");
-            } else {
-                println!("Building converted graph with {backend} backend");
+            if let Some(backend) = backend {
+                println!("Building converted graph with {backend:?} backend");
                 let validated = convert_onnx_with_backend(input_path, options, backend)
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
                 println!(
                     "✓ {:?} graph build succeeded for {input}",
                     validated.context.rustnn_backend()
                 );
+            } else {
+                export_onnx(input_path, options).map_err(|e| anyhow::anyhow!("{e}"))?;
+                println!("✓ portable WebNN export succeeded for {input} (no backend build)");
             }
             if let Some((onnx_cache, webnn_cache)) = &cache_paths {
                 println!("✓ cached ONNX at {}", onnx_cache.display());
                 println!("✓ cached WebNN at {}", webnn_cache.display());
                 if validate {
+                    let backend = backend.ok_or_else(|| {
+                        anyhow::anyhow!("validate models requires setting a backend")
+                    })?;
                     println!(
-                        "Validating reloaded graph with {backend} backend against native CPU ORT"
+                        "Validating reloaded graph with {backend:?} backend against native CPU ORT"
                     );
                     let summary = validate_cached_model_with_options_on_backend(
                         onnx_cache,
@@ -402,12 +401,14 @@ fn main() -> anyhow::Result<()> {
             manifest,
             jobs,
         } => {
+            let backend = backend
+                .ok_or_else(|| anyhow::anyhow!("validate models requires setting a backend"))?;
             std::env::set_var("O2W_OPERATOR_REPORT", "1");
             let selection = Selection::parse(&selection).map_err(anyhow::Error::msg)?;
             let mut options = RunOptions::new(selection, weights).map_err(anyhow::Error::msg)?;
             options.jobs = jobs;
             options.backend = backend;
-            println!("Validating reloaded graphs with {backend} backend against native CPU ORT");
+            println!("Validating reloaded graphs with {backend:?} backend against native CPU ORT");
             if let Some(manifest) = manifest {
                 options.manifest = manifest;
             }
@@ -434,7 +435,7 @@ fn main() -> anyhow::Result<()> {
             }
             let overrides = parse_overrides(override_dims)?;
             let pins = parse_pins(pin_inputs)?;
-            println!("Validating reloaded graphs with {backend} backend against native CPU ORT");
+            println!("Validating reloaded graphs with {backend:?} backend against native CPU ORT");
             let mut failed = Vec::new();
             let total = models.len();
             for (index, model) in models.iter().enumerate() {
@@ -450,6 +451,8 @@ fn main() -> anyhow::Result<()> {
                         )?;
                         (dims, Some(tensors))
                     };
+
+                    let backend = backend.expect("Validation requires setting a `--backend`");
                     let webnn = local_webnn_path(model, &effective, &pins)?;
                     convert_onnx_with_backend(
                         model,

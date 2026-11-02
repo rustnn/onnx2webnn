@@ -2,7 +2,7 @@
 mod quantized_inputs;
 
 use crate::onnx::builder::OnnxBuilder;
-use crate::onnx::convert::{BackendChoice, OnnxError, ValidatedGraph};
+use crate::onnx::convert::{OnnxError, ValidatedGraph};
 use crate::protos::onnx::{
     tensor_shape_proto::dimension::Value as DimensionValue, type_proto::Value as TypeProtoValue,
     ModelProto, TensorProto_DataType, ValueInfoProto,
@@ -10,7 +10,7 @@ use crate::protos::onnx::{
 use half::f16;
 use prost::Message;
 use rustnn::graph::OperandDescriptor;
-use rustnn::mlcontext::{MLContext, MLTensor, MLTensorDescriptor};
+use rustnn::mlcontext::{Backend, MLContext, MLTensor, MLTensorDescriptor};
 use rustnn::operator_enums::MLOperandDataType;
 use rustnn::{load_graph_from_path, run_onnx_path_with_inputs, OnnxInput, TensorData};
 use safetensors::{tensor::Dtype, SafeTensors};
@@ -64,7 +64,7 @@ pub fn validate_cached_model_with_options_on_backend(
     webnn_path: impl AsRef<Path>,
     free_dim_overrides: &HashMap<String, u32>,
     pinned_inputs: &HashMap<String, i64>,
-    backend: BackendChoice,
+    backend: Backend,
 ) -> Result<ValidationSummary, OnnxError> {
     validate_cached_model_with_options_selected_backend(
         onnx_path,
@@ -80,7 +80,7 @@ fn validate_cached_model_with_options_selected_backend(
     webnn_path: impl AsRef<Path>,
     free_dim_overrides: &HashMap<String, u32>,
     pinned_inputs: &HashMap<String, i64>,
-    backend: Option<BackendChoice>,
+    backend: Option<Backend>,
 ) -> Result<ValidationSummary, OnnxError> {
     let onnx_bytes = fs::read(onnx_path.as_ref())?;
     let model = ModelProto::decode(onnx_bytes.as_slice())
@@ -122,7 +122,7 @@ pub fn validate_cached_model_with_inputs_on_backend(
     webnn_path: impl AsRef<Path>,
     inputs: Vec<OnnxInput>,
     pinned_inputs: &HashMap<String, i64>,
-    backend: BackendChoice,
+    backend: Backend,
 ) -> Result<ValidationSummary, OnnxError> {
     validate_cached_model_with_inputs_selected_backend(
         onnx_path,
@@ -138,7 +138,7 @@ fn validate_cached_model_with_inputs_selected_backend(
     webnn_path: impl AsRef<Path>,
     inputs: Vec<OnnxInput>,
     pinned_inputs: &HashMap<String, i64>,
-    backend: Option<BackendChoice>,
+    backend: Option<Backend>,
 ) -> Result<ValidationSummary, OnnxError> {
     let bytes = fs::read(onnx_path.as_ref())?;
     let model = ModelProto::decode(bytes.as_slice())
@@ -159,13 +159,16 @@ fn validate_with_inputs(
     model: &ModelProto,
     inputs: Vec<OnnxInput>,
     pinned_inputs: &HashMap<String, i64>,
-    backend: Option<BackendChoice>,
+    backend: Option<Backend>,
 ) -> Result<ValidationSummary, OnnxError> {
     let backend_options = match backend {
-        Some(backend) => crate::onnx::convert::backend_context_options(backend)?,
+        Some(backend) => crate::onnx::convert::backend_context_options(backend),
         None => crate::onnx::convert::default_backend_context_options(),
     };
-    let backend_label = backend.map_or_else(|| "default".to_owned(), |backend| backend.to_string());
+    let backend_label = backend.map_or_else(
+        || "default".to_owned(),
+        |backend| backend.as_ref().to_string(),
+    );
     let reference = run_onnx_path_with_inputs(onnx_path, clone_inputs(&inputs))
         .map_err(|e| OnnxError::Validation(format!("native ORT run failed: {e}")))?;
     let graph_info = load_graph_from_path(webnn_path)

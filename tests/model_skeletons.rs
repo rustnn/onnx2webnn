@@ -38,9 +38,10 @@ use common::skeleton::{strip_model, FileSource, HubSource, KEEP_BYTES};
 use onnx2webnn::protos::onnx::ModelProto;
 use onnx2webnn::{
     convert_model_proto, convert_model_proto_with_backend, convert_onnx_with_backend,
-    BackendChoice, ConvertOptions,
+    ConvertOptions,
 };
 use prost::Message;
+use rustnn::mlcontext::Backend;
 
 enum Source {
     Hub,
@@ -140,10 +141,10 @@ impl Sweep {
 
     fn convert(&self, idx: usize, entry: &Entry) {
         let label = entry.label(idx);
-        let backend: BackendChoice = std::env::var("O2W_TEST_BACKEND")
-            .unwrap_or_else(|_| "ort".into())
+        let backend: Backend = std::env::var("O2W_TEST_BACKEND")
+            .unwrap_or_else(|_| "onnx".into())
             .parse()
-            .expect("O2W_TEST_BACKEND must be ort, coreml, or trtx");
+            .expect("O2W_TEST_BACKEND must be onnx, coreml, or trtx (or any other rustnn::mlcontext::Backend)");
         let options = ConvertOptions {
             free_dim_overrides: entry.override_dims.clone(),
             optimize: true,

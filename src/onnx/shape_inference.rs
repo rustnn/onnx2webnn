@@ -2373,6 +2373,10 @@ pub(crate) fn dynamic_scalar_dimension_for_value(
     }
     match &dims[0] {
         Dimension::Dynamic(dim) => Some(dim.clone()),
+        Dimension::Expression(dim) => Some(DynamicDimension {
+            name: dim.expression.to_string(),
+            max_size: dim.max_size,
+        }),
         Dimension::Static(_) => None,
     }
 }
@@ -2963,17 +2967,7 @@ fn fold_shape_constants(
                                     // Each element of the Shape output corresponds to one
                                     // input dimension.  Build a 1-D dim vector where
                                     // dynamic input dims become Dynamic elements.
-                                    let out_dims: Vec<rustnn::graph::Dimension> = dims
-                                        .iter()
-                                        .map(|d| match d {
-                                            rustnn::graph::Dimension::Dynamic(dd) => {
-                                                rustnn::graph::Dimension::Dynamic(dd.clone())
-                                            }
-                                            rustnn::graph::Dimension::Static(v) => {
-                                                rustnn::graph::Dimension::Static(*v)
-                                            }
-                                        })
-                                        .collect();
+                                    let out_dims = dims.clone();
                                     value_shape_dims.insert(out.clone(), out_dims);
                                 }
                             }
@@ -3832,6 +3826,9 @@ fn fold_shape_constants(
                                                 Dimension::Dynamic(dim.clone())
                                             }
                                             (Dimension::Static(v), _) => Dimension::Static(*v),
+                                            (Dimension::Expression(dim), _) => {
+                                                Dimension::Expression(dim.clone())
+                                            }
                                         })
                                         .collect(),
                                 )

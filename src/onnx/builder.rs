@@ -10,10 +10,10 @@ use crate::onnx::convert::{map_onnx_data_type, sanitize_identifier, OnnxError};
 use crate::protos::onnx::{TensorProto, TensorProto_DataType};
 use rustnn::error::{Error as RustnnError, GraphBuilderError};
 use rustnn::graph::Dimension;
-use rustnn::mlcontext::MLOperandDescriptor;
+use rustnn::mlcontext::{MLDynamicOperandDescriptor, MLOperandDescriptor};
 use rustnn::mlcontext::{MLGraph, MLGraphBuilder, MLNamedOperands, MLOperand};
 use rustnn::operator_enums::MLOperandDataType;
-use rustnn::operator_options::MLOperatorOptions;
+use rustnn::operator_options::{MLDimension, MLOperatorOptions};
 use rustnn::DataType;
 use std::collections::{HashMap, HashSet};
 
@@ -148,8 +148,18 @@ impl<'a, 'ctx, 'bld> OnnxBuilder<'a, 'ctx, 'bld> {
         shape: &[Dimension],
     ) -> Result<(), OnnxError> {
         let id = Self::webnn_id(name);
-        let desc = descriptor_from_parts(data_type, shape)?;
-        let op = self.builder.input(&id, &desc).map_err(map_rustnn_error)?;
+        let op = if shape.iter().any(|dim| !matches!(dim, Dimension::Static(_))) {
+            let desc = descriptor_from_parts(data_type, shape)?;
+            self.builder.dynamic_input(&id, &desc)
+        } else {
+            let dims: Vec<u32> = shape
+                .iter()
+                .map(Dimension::get_static_or_max_size)
+                .collect();
+            let desc = descriptor_static(data_type, &dims)?;
+            self.builder.input(&id, &desc)
+        }
+        .map_err(map_rustnn_error)?;
         self.input_operands.insert(operand_index(op));
         self.input_names.insert(name.to_string());
         self.input_names.insert(id.clone());
@@ -260,16 +270,10 @@ pub fn descriptor_static(
 pub fn descriptor_from_parts(
     data_type: DataType,
     shape: &[Dimension],
-) -> Result<MLOperandDescriptor, OnnxError> {
+) -> Result<MLDynamicOperandDescriptor, OnnxError> {
     let dt = map_ast_data_type(data_type)?;
-    let mut dims = Vec::with_capacity(shape.len());
-    for dim in shape {
-        match dim {
-            Dimension::Static(v) => dims.push(*v as u64),
-            Dimension::Dynamic(d) => dims.push(d.max_size as u64),
-        }
-    }
-    Ok(MLOperandDescriptor::new(dt, dims))
+    let dims = shape.iter().cloned().map(MLDimension::from).collect();
+    Ok(MLDynamicOperandDescriptor::new(dt, dims))
 }
 
 pub fn map_ast_data_type(dt: DataType) -> Result<MLOperandDataType, OnnxError> {

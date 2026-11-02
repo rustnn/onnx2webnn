@@ -31,15 +31,7 @@ pub fn output_label(node: &crate::protos::onnx::NodeProto, node_name: &str) -> S
 }
 
 pub fn ast_dims_to_mldim(dims: &[Dimension]) -> Vec<MLDimension> {
-    dims.iter()
-        .map(|d| match d {
-            Dimension::Static(v) => MLDimension::Static(*v),
-            Dimension::Dynamic(dd) => MLDimension::Dynamic(MLDynamicDimension {
-                name: dd.name.clone(),
-                max_size: dd.max_size,
-            }),
-        })
-        .collect()
+    dims.iter().cloned().map(MLDimension::from).collect()
 }
 
 /// Merge ONNX dim_param metadata with computed static shape values for reshape/expand.
@@ -47,7 +39,7 @@ pub fn merge_dims_with_static_values(
     dims: &[Dimension],
     static_values: &[u32],
 ) -> Option<Vec<MLDimension>> {
-    if !dims.iter().any(|d| matches!(d, Dimension::Dynamic(_))) {
+    if dims.iter().all(|d| matches!(d, Dimension::Static(_))) {
         return None;
     }
     if dims.len() != static_values.len() {
@@ -57,11 +49,8 @@ pub fn merge_dims_with_static_values(
         dims.iter()
             .zip(static_values.iter())
             .map(|(d, &sv)| match d {
-                Dimension::Dynamic(dd) => MLDimension::Dynamic(MLDynamicDimension {
-                    name: dd.name.clone(),
-                    max_size: dd.max_size,
-                }),
                 Dimension::Static(_) => MLDimension::Static(sv),
+                _ => MLDimension::from(d.clone()),
             })
             .collect(),
     )
@@ -72,23 +61,13 @@ pub fn merge_dims_with_i64_values(
     dims: &[Dimension],
     static_values: &[i64],
 ) -> Option<Vec<MLDimension>> {
-    if !dims.iter().any(|d| matches!(d, Dimension::Dynamic(_))) {
+    if dims.iter().all(|d| matches!(d, Dimension::Static(_))) {
         return None;
     }
     if !static_values.is_empty() && dims.len() != static_values.len() {
         return None;
     }
-    Some(
-        dims.iter()
-            .map(|d| match d {
-                Dimension::Static(v) => MLDimension::Static(*v),
-                Dimension::Dynamic(dd) => MLDimension::Dynamic(MLDynamicDimension {
-                    name: dd.name.clone(),
-                    max_size: dd.max_size,
-                }),
-            })
-            .collect(),
-    )
+    Some(ast_dims_to_mldim(dims))
 }
 
 pub fn u32_slice_to_mldim(dims: &[u32]) -> Vec<MLDimension> {

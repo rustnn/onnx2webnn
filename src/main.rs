@@ -85,7 +85,7 @@ enum Command {
         #[arg(long)]
         optimize: bool,
 
-        /// Preserve unresolved symbolic input dims as dynamic metadata (experimental)
+        /// Preserve symbolic input dimensions and bounds via RustNN dynamic inputs (experimental)
         #[arg(long)]
         experimental_dynamic_inputs: bool,
 

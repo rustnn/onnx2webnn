@@ -6,6 +6,69 @@ use prost::Message;
 use std::{collections::HashMap, fs};
 
 #[test]
+fn dynamic_input_dimensions_propagate_and_overrides_stay_static() {
+    let mut input = f32_input("input", &[1, 3, 1, 1]);
+    let Some(type_proto::Value::TensorType(tensor)) = input.r#type.as_mut().unwrap().value.as_mut()
+    else {
+        panic!("tensor input")
+    };
+    for (axis, name) in [(2, "h"), (3, "w")] {
+        tensor.shape.as_mut().unwrap().dim[axis].value = Some(Value::DimParam(name.into()));
+    }
+    let mut output = input.clone();
+    output.name = "output".into();
+    let fixture = model(
+        17,
+        graph(
+            "dynamic_relu",
+            vec![input],
+            vec![output],
+            vec![node("Relu", "relu", &["input"], &["output"], &[])],
+            vec![],
+        ),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let webnn = dir.path().join("graph.webnn");
+    for h in [None, Some(8)] {
+        export_model_proto(
+            fixture.clone(),
+            &ConvertOptions {
+                experimental_dynamic_inputs: true,
+                free_dim_overrides: h
+                    .map(|h| HashMap::from([("h".into(), h)]))
+                    .unwrap_or_default(),
+                output_path: Some(webnn.clone()),
+                ..ConvertOptions::default()
+            },
+        )
+        .expect("export symbolic input");
+        let saved = rustnn::load_graph_from_path(&webnn).expect("reload symbolic graph");
+        let expected = vec![
+            rustnn::graph::Dimension::Static(1),
+            rustnn::graph::Dimension::Static(3),
+            h.map(rustnn::graph::Dimension::Static).unwrap_or_else(|| {
+                rustnn::graph::Dimension::Dynamic(rustnn::graph::DynamicDimension {
+                    name: "h".into(),
+                    max_size: 65_535,
+                })
+            }),
+            rustnn::graph::Dimension::Dynamic(rustnn::graph::DynamicDimension {
+                name: "w".into(),
+                max_size: 65_535,
+            }),
+        ];
+        for name in ["input", "output"] {
+            let operand = saved
+                .operands
+                .iter()
+                .find(|op| op.name.as_deref() == Some(name))
+                .unwrap();
+            assert_eq!(operand.descriptor.shape, expected, "{name}");
+        }
+    }
+}
+
+#[test]
 fn pixel_unshuffle_preserves_dynamic_metadata_and_matches_ort_when_specialized() {
     let mut input = f32_input("input", &[1, 3, 1, 1]);
     let Some(type_proto::Value::TensorType(tensor)) = input.r#type.as_mut().unwrap().value.as_mut()
@@ -120,6 +183,26 @@ fn pixel_unshuffle_preserves_dynamic_metadata_and_matches_ort_when_specialized()
     )
     .expect("export dynamic graph");
     let saved = rustnn::load_graph_from_path(&webnn).expect("reload dynamic metadata");
+    let input = saved
+        .operands
+        .iter()
+        .find(|operand| operand.name.as_deref() == Some("input"))
+        .expect("input operand");
+    assert_eq!(
+        input.descriptor.shape,
+        vec![
+            rustnn::graph::Dimension::Static(1),
+            rustnn::graph::Dimension::Static(3),
+            rustnn::graph::Dimension::Dynamic(rustnn::graph::DynamicDimension {
+                name: "h".into(),
+                max_size: 65_535,
+            }),
+            rustnn::graph::Dimension::Dynamic(rustnn::graph::DynamicDimension {
+                name: "w".into(),
+                max_size: 65_535,
+            }),
+        ]
+    );
     let unshuffled = saved
         .operands
         .iter()

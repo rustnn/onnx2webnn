@@ -82,6 +82,7 @@ dynamic shapes or further specialization.
 | Flag | Purpose |
 |------|---------|
 | `--input` | Input `.onnx` path (required) |
+| `-o`, `--output PATH` | Write to a `.webnn` file or an extensionless directory containing `<input-stem>.webnn`; create missing directories. Weights are saved alongside it as `.safetensors`. Omit to use the cache. |
 | `--optimize` | Constant folding and shape propagation |
 | `--override-dim NAME=VALUE` | Bind a symbolic dim (repeatable); unnamed zero dims are addressed as `<input>_dim<axis>` |
 | `--override-dims-file` | JSON overrides (`freeDimensionOverrides` or flat object) |

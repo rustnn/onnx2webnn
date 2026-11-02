@@ -291,7 +291,11 @@ fn accepted_input_dtypes_and_pins_are_checked() {
 #[test]
 fn two_local_models_use_supplied_inputs() {
     let dir = tempfile::tempdir().unwrap();
-    let mut args = vec!["validate-files".to_string()];
+    let mut args = vec![
+        "validate-files".to_string(),
+        "--backend".to_string(),
+        "onnx".to_string(),
+    ];
     for index in 0..2 {
         let model_path = dir.path().join(format!("model{index}.onnx"));
         let feeds = dir.path().join(format!("feeds{index}.safetensors"));
@@ -350,6 +354,8 @@ fn numerical_disagreement_fails_local_command() {
     let output = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
         .args([
             "validate-files",
+            "--backend",
+            "onnx",
             "--model",
             model_path.to_str().unwrap(),
             "--inputs",

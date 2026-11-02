@@ -1,0 +1,55 @@
+name: RustNN main compatibility
+
+on:
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Compile against RustNN main (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cargo_flags: ''
+          - os: macos-latest
+            cargo_flags: --features coreml
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Select live RustNN main
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('Cargo.toml')
+          text = path.read_text()
+          text, count = re.subn(r'(rustnn = \{ git = "https://github.com/rustnn/rustnn", )rev = "[0-9a-f]+"', r'\1branch = "main"', text)
+          assert count == 1, 'Expected one pinned RustNN dependency'
+          path.write_text(text)
+          PY
+          cargo update -p rustnn
+      - name: Check all targets
+        id: check
+        run: cargo check --locked --all-targets ${{ matrix.cargo_flags }}
+      - name: Report compatibility
+        if: always()
+        run: |
+          echo 'RustNN main compatibility: ${{ steps.check.outcome }}' >> "$GITHUB_STEP_SUMMARY"
+          if [ '${{ steps.check.outcome }}' != 'success' ]; then
+            echo '::warning::RustNN main compatibility check did not pass; normal CI uses the tested revision.'
+          fi

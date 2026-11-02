@@ -1,7 +1,7 @@
 # ONNX → WebNN operator conversion status
 
-> **Last edited:** `2026-10-20T10:04:36Z`<br>
-> **Checkout:** `validation-enhancements` at `59d28c6`
+> **Last edited:** `2026-11-02T16:51:17Z`<br>
+> **Checkout:** `real_esr_gan` at `6327be4`
 >
 > **Freshness:** Use this document only when this provenance is recent relative to the relevant
 > code and commits; otherwise verify the implementation, tests, and Git history before relying
@@ -208,7 +208,7 @@ The generated Python supported-op data derives from the same Rust catalog.
 | `ReduceSumSquare` | Direct WebNN | Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply. |  |  |
 | `RegexFullMatch` | Unsupported | WebNN has no string tensor/operation support. |  |  |
 | `Relu` | Direct WebNN | Direct standardized WebNN primitive; handler schema checks and WebNN operand-type limits apply. |  |  |
-| `Reshape` | Direct WebNN | Direct WebNN reshape; target shape must be build-time resolvable. |  |  |
+| `Reshape` | Direct WebNN | Direct WebNN reshape; target shape must be build-time resolvable. Experimental dynamic inputs preserve copied symbolic dimensions and resolve -1 when dimension factors cancel to a static size or a single scaled symbol. |  |  |
 | `Resize` | Direct WebNN | Maps to WebNN resample2d; nearest/linear supported forms only, with 1-D emulation. Cubic and unsupported coordinate/axis modes are rejected. |  |  |
 | `ReverseSequence` | Direct WebNN | Partial mapping to WebNN reverse: sequence_lens and batch_axis semantics are ignored, so only full-axis reversal is equivalent. |  |  |
 | `RoiAlign` | Unsupported | No current lowering; the required vision/spatial primitive is absent or not implemented. |  |  |

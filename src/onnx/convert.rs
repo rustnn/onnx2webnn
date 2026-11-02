@@ -26,14 +26,13 @@ use crate::protos::onnx::{
 use prost::Message;
 use rustnn::graph::{Dimension, DynamicDimension};
 use rustnn::mlcontext::{
-    MLContext, MLContextOptions, MLGraph, MLGraphBuilder, MLOperand, MLPowerPreference,
+    Backend, MLContext, MLContextOptions, MLGraph, MLGraphBuilder, MLOperand, MLPowerPreference,
 };
 use rustnn::DataType;
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use thiserror::Error;
 use webnn_onnx_utils::{data_types as utils_data_types, identifiers};
 
@@ -41,39 +40,6 @@ use webnn_onnx_utils::{data_types as utils_data_types, identifiers};
 pub struct ValidatedGraph<'ctx> {
     pub context: MLContext<'ctx>,
     pub graph: MLGraph<'ctx>,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum BackendChoice {
-    #[default]
-    Ort,
-    Coreml,
-    Trtx,
-}
-
-impl FromStr for BackendChoice {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "ort" => Ok(Self::Ort),
-            "coreml" => Ok(Self::Coreml),
-            "trtx" => Ok(Self::Trtx),
-            _ => Err(format!(
-                "invalid backend {value:?}; expected ort, coreml, or trtx"
-            )),
-        }
-    }
-}
-
-impl std::fmt::Display for BackendChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Ort => "ort",
-            Self::Coreml => "coreml",
-            Self::Trtx => "trtx",
-        })
-    }
 }
 
 const MIN_SUPPORTED_OPSET: i64 = 1;
@@ -389,7 +355,7 @@ fn prune_empty_graph_outputs(model: &mut ModelProto) {
     graph
         .initializer
         .retain(|t| !t.dims.contains(&0) || consumed.contains(&t.name));
-    crate::debug_println!(
+    log::debug!(
         "[CONVERT] Dropped {} zero-size graph output(s)",
         before - graph.output.len()
     );
@@ -468,7 +434,7 @@ fn prune_dead_nodes(graph: &mut crate::protos::onnx::GraphProto) {
     graph
         .initializer
         .retain(|t| needed.contains(&t.name) || input_names.contains(t.name.as_str()));
-    crate::debug_println!("[if-inline] pruned {dropped} dead node(s)");
+    log::debug!("[if-inline] pruned {dropped} dead node(s)");
 }
 
 /// Drop graph inputs no node consumes (e.g. the KV cache of an inlined
@@ -815,7 +781,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
             }
 
             if !has_data {
-                crate::debug_println!("Warning: Skipping initializer '{}' with no data", name);
+                log::debug!("Warning: Skipping initializer '{}' with no data", name);
                 continue;
             }
 
@@ -854,6 +820,19 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 continue;
             }
             initializers_map.insert(initializer.name.as_str().to_string(), initializer);
+        }
+        for node in &onnx_graph.node {
+            if node.op_type == "Constant" {
+                if let (Some(output), Some(tensor)) = (
+                    node.output.first(),
+                    node.attribute
+                        .iter()
+                        .find(|a| a.name == "value")
+                        .and_then(|a| a.t.as_ref()),
+                ) {
+                    initializers_map.insert(output.clone(), tensor);
+                }
+            }
         }
 
         // Build value_shapes map from value_info and inputs for shape inference
@@ -1199,14 +1178,14 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         // earlier wrong values (e.g., Where operation heuristics)
                         if k.contains("rotary") && k.contains("Where") {
                             if let Some(old_val) = const_values.get(&k) {
-                                crate::debug_println!(
+                                log::debug!(
                                     "[CONVERT] Overwriting {} from {:?} to {:?}",
                                     k,
                                     old_val,
                                     v
                                 );
                             } else {
-                                crate::debug_println!("[CONVERT] Inserting new {} = {:?}", k, v);
+                                log::debug!("[CONVERT] Inserting new {} = {:?}", k, v);
                             }
                         }
                         const_values.insert(k, v);
@@ -1224,7 +1203,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                             .unwrap_or_else(|| dynamic_max_for_dim(&dim));
                         inference_overrides.insert(dim.clone(), fallback);
                         dynamic_inference_attempts.insert(dim.clone());
-                        crate::debug_println!(
+                        log::debug!(
                             "[CONVERT] Retrying static shape inference with inferred override {}={} \
                              (required by input '{}')",
                             dim,
@@ -1233,7 +1212,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         );
                         continue;
                     }
-                    crate::debug_println!(
+                    log::debug!(
                         "[CONVERT] Skipping static shape inference due to unresolved dynamic dim '{}' on input '{}'",
                         dim,
                         input
@@ -1259,7 +1238,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
 
         // DEBUG: Check value before node conversion
         if let Some(val) = const_values.get("/model/rotary_emb/Where_output_0") {
-            crate::debug_println!("[NODE CONV] /model/rotary_emb/Where_output_0 = {:?}", val);
+            log::debug!("[NODE CONV] /model/rotary_emb/Where_output_0 = {:?}", val);
         }
         // O2W_PROBE=<substr>: dump post-propagation shape/const state for
         // matching node outputs (diagnostics only).
@@ -1716,7 +1695,7 @@ pub fn convert_onnx<P: AsRef<Path>>(
 pub fn convert_onnx_with_backend<P: AsRef<Path>>(
     onnx_path: P,
     options: ConvertOptions,
-    backend: BackendChoice,
+    backend: Backend,
 ) -> Result<ValidatedGraph<'static>, OnnxError> {
     let (model, options) = load_model_from_path(onnx_path.as_ref(), options)?;
     convert_model_with_backend(model, &options, backend)
@@ -1920,7 +1899,7 @@ fn inline_constant_ifs(model: &mut ModelProto, options: &ConvertOptions) {
                 continue;
             };
 
-            crate::debug_println!(
+            log::debug!(
                 "[if-inline] {} taking {branch_attr} (cond={cond})",
                 node.name
             );
@@ -2020,66 +1999,8 @@ pub(crate) fn default_backend_context_options() -> MLContextOptions {
 }
 
 /// Select an explicitly requested compiled-in backend.
-pub(crate) fn backend_context_options(
-    backend: BackendChoice,
-) -> Result<MLContextOptions, OnnxError> {
-    match backend {
-        BackendChoice::Ort => Ok(MLContextOptions::new(MLPowerPreference::Default, false)
-            .with_rustnn_backend_hint(rustnn::mlcontext::Backend::Onnx)),
-        BackendChoice::Coreml => {
-            #[cfg(all(feature = "coreml", target_os = "macos"))]
-            {
-                Ok(MLContextOptions::new(MLPowerPreference::Default, false)
-                    .with_rustnn_backend_hint(rustnn::mlcontext::Backend::Coreml))
-            }
-            #[cfg(not(all(feature = "coreml", target_os = "macos")))]
-            {
-                Err(OnnxError::Backend(
-                    "coreml requires a macOS build with --features coreml".into(),
-                ))
-            }
-        }
-        BackendChoice::Trtx => {
-            #[cfg(feature = "trtx")]
-            {
-                Ok(MLContextOptions::new(MLPowerPreference::Default, true)
-                    .with_rustnn_backend_hint(rustnn::mlcontext::Backend::Trtx))
-            }
-            #[cfg(not(feature = "trtx"))]
-            {
-                Err(OnnxError::Backend(
-                    "trtx requires a build with --features trtx".into(),
-                ))
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod backend_selection_tests {
-    use super::*;
-    use rustnn::mlcontext::Backend;
-
-    #[test]
-    fn conversion_context_uses_requested_backend() {
-        let context =
-            MLContext::create(&backend_context_options(BackendChoice::Ort).unwrap()).unwrap();
-        assert_eq!(context.rustnn_backend(), Backend::Onnx);
-        #[cfg(not(feature = "trtx"))]
-        assert!(backend_context_options(BackendChoice::Trtx).is_err());
-        #[cfg(not(all(feature = "coreml", target_os = "macos")))]
-        assert!(backend_context_options(BackendChoice::Coreml).is_err());
-    }
-
-    #[cfg(not(feature = "trtx"))]
-    #[test]
-    fn conversion_context_uses_build_default_backend() {
-        let context = MLContext::create(&default_backend_context_options()).unwrap();
-        #[cfg(all(feature = "coreml", target_os = "macos"))]
-        assert_eq!(context.rustnn_backend(), Backend::Coreml);
-        #[cfg(not(all(feature = "coreml", target_os = "macos")))]
-        assert_eq!(context.rustnn_backend(), Backend::Onnx);
-    }
+pub(crate) fn backend_context_options(backend: Backend) -> MLContextOptions {
+    default_backend_context_options().with_rustnn_backend_hint(backend)
 }
 
 /// Lower an in-memory ONNX model and compile it with the build-default backend.
@@ -2093,7 +2014,7 @@ pub fn convert_model_proto(
 pub fn convert_model_proto_with_backend(
     model: ModelProto,
     options: &ConvertOptions,
-    backend: BackendChoice,
+    backend: Backend,
 ) -> Result<ValidatedGraph<'static>, OnnxError> {
     convert_model_with_backend(model, options, backend)
 }
@@ -2120,10 +2041,10 @@ pub(crate) fn convert_model(
 fn convert_model_with_backend(
     model: ModelProto,
     options: &ConvertOptions,
-    backend: BackendChoice,
+    backend: Backend,
 ) -> Result<ValidatedGraph<'static>, OnnxError> {
-    let context_options = backend_context_options(backend)?;
-    convert_model_with_context_options(model, options, context_options, &backend.to_string())
+    let opts = default_backend_context_options().with_rustnn_backend_hint(backend);
+    convert_model_with_context_options(model, options, opts, &backend.as_ref())
 }
 
 fn convert_model_with_context_options(
@@ -2181,11 +2102,11 @@ fn prepare_model(
         &options.free_dim_overrides,
     )?;
     if options.optimize {
-        crate::debug_println!("Running constant folding...");
+        log::debug!("Running constant folding...");
         let evaluators = crate::onnx::constant_folding::evaluators::get_evaluators();
         let nodes_folded =
             crate::onnx::constant_folding::fold_constants_in_model(&mut model, &evaluators)?;
-        crate::debug_println!("Constant folding: {} nodes folded", nodes_folded);
+        log::debug!("Constant folding: {} nodes folded", nodes_folded);
     }
     inline_constant_ifs(&mut model, options);
     if !options.pinned_inputs.is_empty() {

@@ -5,8 +5,6 @@ on:
 
 env:
   ORT_VERSION: 1.29.0
-  RUSTNN_REPO: rustnn/rustnn
-  RUSTNN_REF: main
 
 jobs:
   validate:
@@ -22,13 +20,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: onnx2webnn
-
-      - name: Checkout rustnn
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.RUSTNN_REPO }}
-          ref: ${{ env.RUSTNN_REF }}
-          path: rustnn
 
       - name: Check runner contract
         working-directory: ${{ github.workspace }}

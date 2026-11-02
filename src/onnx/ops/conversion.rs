@@ -447,9 +447,11 @@ impl ConversionHandler {
                 OnnxBuilder::labeled_options(&format!("{output_name}_zero_point")),
             )
             .map_err(map_op_error)?;
+        let quant_scale = align_quantization_parameter(b, x, scale)?;
+        let quant_zero_point = align_quantization_parameter(b, x, zero_point)?;
         let y = b
             .builder
-            .quantize_linear_with_zeropoint(x, scale, zero_point)
+            .quantize_linear_with_zeropoint(x, quant_scale, quant_zero_point)
             .map_err(map_op_error)?;
 
         record_node_output(b, &outputs[0], &format!("{output_name}_y"), y);
@@ -540,6 +542,28 @@ fn is_scalar_shape(shape: Option<&[i64]>) -> bool {
     }
 }
 
+/// ONNX per-tensor parameters broadcast as rank-matched singleton tensors in WebNN.
+pub(crate) fn align_quantization_parameter(
+    b: &mut OnnxBuilder<'_, '_, '_>,
+    input: MLOperand,
+    parameter: MLOperand,
+) -> Result<MLOperand, OnnxError> {
+    let rank = b
+        .builder
+        .rustnn_operand_shape(input)
+        .map_err(|err| OnnxError::ShapeInference(err.to_string()))?
+        .len();
+    let shape = b
+        .builder
+        .rustnn_operand_shape(parameter)
+        .map_err(|err| OnnxError::ShapeInference(err.to_string()))?;
+    if shape.len() != rank && shape.iter().all(|&dim| dim == 1) {
+        let shape = vec![rustnn::operator_options::MLDimension::Static(1); rank];
+        return b.builder.reshape(parameter, shape).map_err(map_op_error);
+    }
+    Ok(parameter)
+}
+
 fn emit_quantize_linear(
     b: &mut OnnxBuilder<'_, '_, '_>,
     x: MLOperand,
@@ -548,8 +572,25 @@ fn emit_quantize_linear(
     output_name: &str,
 ) -> Result<MLOperand, OnnxError> {
     let opts = OnnxBuilder::labeled_options(output_name);
+    let input_type = b
+        .builder
+        .rustnn_operand_data_type(x)
+        .map_err(|err| OnnxError::ShapeInference(err.to_string()))?;
+    let scale_type = b
+        .builder
+        .rustnn_operand_data_type(scale)
+        .map_err(|err| OnnxError::ShapeInference(err.to_string()))?;
+    // ONNX permits Float16 inputs with Float32 scales; WebNN requires matching types.
+    let x = if input_type == MLOperandDataType::Float16 && scale_type == MLOperandDataType::Float32
+    {
+        b.builder.cast(x, scale_type).map_err(map_op_error)?
+    } else {
+        x
+    };
+    let scale = align_quantization_parameter(b, x, scale)?;
     if let Some(zp_name) = zero_point_name.filter(|s| !s.is_empty()) {
         let zero_point = b.resolve_operand(zp_name)?;
+        let zero_point = align_quantization_parameter(b, x, zero_point)?;
         return b
             .builder
             .quantize_linear_with_zeropoint(x, scale, zero_point)
@@ -568,8 +609,10 @@ fn emit_dequantize_linear(
     output_name: &str,
 ) -> Result<MLOperand, OnnxError> {
     let opts = OnnxBuilder::labeled_options(output_name);
+    let scale = align_quantization_parameter(b, x, scale)?;
     if let Some(zp_name) = zero_point_name.filter(|s| !s.is_empty()) {
         let zero_point = b.resolve_operand(zp_name)?;
+        let zero_point = align_quantization_parameter(b, x, zero_point)?;
         return b
             .builder
             .dequantize_linear_with_zeropoint(x, scale, zero_point)

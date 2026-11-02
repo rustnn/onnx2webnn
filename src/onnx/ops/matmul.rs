@@ -688,6 +688,8 @@ impl MatMulHandler {
         };
         b.register_constant_from_bytes(&zp_name, zp_dtype, &const_shape, zp_bytes)?;
         let zero_point = b.resolve_operand(&zp_name)?;
+        let scale = super::conversion::align_quantization_parameter(b, x, scale)?;
+        let zero_point = super::conversion::align_quantization_parameter(b, x, zero_point)?;
 
         let out = b
             .builder

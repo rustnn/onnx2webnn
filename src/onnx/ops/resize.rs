@@ -50,10 +50,17 @@ impl OpHandler for ResizeHandler {
             return Ok(result);
         }
         let axes: [usize; 2] = [2, 3];
-        let (spatial_scales, spatial_sizes) =
-            resolve_spatial_resample_params(node, context, &axes)?;
-
         let input = b.resolve_operand(&inputs[0])?;
+        let input_shape: Vec<i64> = b
+            .builder
+            .rustnn_operand_shape(input)
+            .map_err(|e| OnnxError::ShapeInference(e.to_string()))?
+            .into_iter()
+            .map(|d| d as i64)
+            .collect();
+        let (spatial_scales, spatial_sizes) =
+            resolve_spatial_resample_params(node, context, &axes, Some(&input_shape))?;
+
         let output_name = output_label(node, &node_name);
         let opts = MLResample2dOptions {
             label: output_name.clone(),
@@ -183,12 +190,14 @@ fn resolve_spatial_resample_params(
     node: &NodeProto,
     context: &ConversionContext,
     axes: &[usize; 2],
+    recorded_input_shape: Option<&[i64]>,
 ) -> Result<(Vec<f32>, Option<Vec<u32>>), OnnxError> {
     let inputs = node.input.as_slice();
     let input_shape = inputs
         .first()
         .and_then(|name| context.resolve_shape(name))
         .map(|shape| shape.as_slice());
+    let input_shape = recorded_input_shape.or(input_shape);
 
     // Empty-string OR empty-tensor placeholders mean "optional input absent".
     let scales_name = inputs
@@ -445,7 +454,8 @@ mod tests {
             value_types: &HashMap::new(),
         };
 
-        let (scales, sizes) = resolve_spatial_resample_params(&node, &context, &[2, 3]).unwrap();
+        let (scales, sizes) =
+            resolve_spatial_resample_params(&node, &context, &[2, 3], None).unwrap();
         assert_eq!(scales, vec![1.0, 1.0]);
         assert_eq!(sizes, Some(vec![6, 6]));
         crate::onnx::ops::convert_handler_with_context(&handler, &node, &context).unwrap();

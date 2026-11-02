@@ -7,11 +7,8 @@ on:
     branches: [main, transformers]
 
 env:
-  # ONNX Runtime dylib for the reference backend. rustnn pins ort 2.0.0-rc.13
-  # with the `api-27` feature, so this must be >= 1.27 (any newer 1.x works).
+  # ONNX Runtime dylib for the reference backend.
   ORT_VERSION: 1.29.0
-  RUSTNN_REPO: rustnn/rustnn
-  RUSTNN_REF: main
 
 jobs:
   test:
@@ -69,15 +66,6 @@ jobs:
         with:
           path: onnx2webnn
 
-      # Cargo.toml references rustnn as a sibling path dependency (../rustnn).
-      - name: Checkout rustnn
-        id: rustnn
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.RUSTNN_REPO }}
-          ref: ${{ env.RUSTNN_REF }}
-          path: rustnn
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -89,12 +77,7 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # The registry cache only depends on Cargo.lock, but target/ must also
-      # key on the rustnn commit: sources are checked out BEFORE the cache is
-      # restored, so a stale target/ has newer fingerprints than the fresh
-      # rustnn sources and cargo silently skips rebuilding the path dependency.
-      # No restore-keys for target/ for the same reason — only an exact match
-      # is safe.
+      # Cargo.lock includes the pinned RustNN Git revision.
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -108,7 +91,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: onnx2webnn/target
-          key: ${{ runner.os }}-target-${{ hashFiles('onnx2webnn/Cargo.lock') }}-${{ steps.rustnn.outputs.commit }}
+          key: ${{ runner.os }}-target-${{ hashFiles('onnx2webnn/Cargo.lock') }}
 
       - name: Download ONNX Runtime ${{ env.ORT_VERSION }}
         run: |

@@ -283,6 +283,26 @@ impl ReshapeHandler {
             };
         let shape_from_const = !shape_values.is_empty();
 
+        if let Some(dims) = node
+            .output
+            .first()
+            .and_then(|out| value_shape_dims_for(out, context.value_shape_dims))
+            .filter(|dims| {
+                dims.iter()
+                    .any(|d| matches!(d, rustnn::graph::Dimension::Dynamic(_)))
+            })
+        {
+            return Self::emit_reshape_with_shape(
+                b,
+                node,
+                &output_name,
+                data_input,
+                ast_dims_to_mldim(dims),
+                context,
+                &data_input_raw,
+            );
+        }
+
         // Fallback: derive shape from known output/shape-input metadata when the shape tensor isn't const.
         if shape_values.is_empty() {
             if let Some(out) = node.output.as_slice().first() {
@@ -347,7 +367,7 @@ impl ReshapeHandler {
                 // targets built from Concat shape vectors (e.g. SmolLM attention).
                 shape_values = ds.clone();
                 if output_name.contains("layers_15_self_attn") && output_name.contains("Reshape") {
-                    crate::debug_println!(
+                    log::debug!(
                         "[RESHAPE FALLBACK] {} from input {:?} -> {:?}",
                         output_name,
                         ds,
@@ -366,7 +386,7 @@ impl ReshapeHandler {
             && output_name.contains("Reshape")
         {
             // Debug: track const-derived shapes for layer 15
-            crate::debug_println!(
+            log::debug!(
                 "[RESHAPE CONST] {} newShape from const -> {:?}",
                 output_name,
                 shape_values
@@ -459,7 +479,7 @@ impl ReshapeHandler {
                         // In those cases, prefer the existing best-effort fallback instead of
                         // failing conversion outright.
                         if total_elements > 0 {
-                            crate::debug_println!(
+                            log::debug!(
                                 "[reshape] cannot infer -1 for {} from input {:?} and target {:?}; replacing -1 with 1",
                                 data_input_raw,
                                 input_shape,
@@ -490,7 +510,7 @@ impl ReshapeHandler {
 
                 inferred_shape
             } else {
-                crate::debug_println!(
+                log::debug!(
                     "[reshape] missing input shape for {}, shape {:?}; replacing -1 with 1",
                     data_input_raw,
                     shape_values
@@ -524,7 +544,7 @@ impl ReshapeHandler {
                 }
 
                 let hidden = shape_values.last().copied().unwrap_or(1);
-                crate::debug_println!(
+                log::debug!(
                     "[reshape] repair: {} input_shape={:?} target_shape={:?} batch_hint={} seq_hint={} hidden={}",
                     output_name, input_shape, shape_values, batch_hint, seq_hint, hidden
                 );
@@ -541,7 +561,7 @@ impl ReshapeHandler {
 
         // Debug: final shape for layer 15
         if output_name.contains("layers_15_self_attn") && output_name.contains("Reshape") {
-            crate::debug_println!(
+            log::debug!(
                 "[RESHAPE FINAL] {} final newShape -> {:?}",
                 output_name,
                 shape_values
@@ -609,14 +629,14 @@ impl ReshapeHandler {
 
         // Debug logging for all Expand operations
         if shape_input_raw.contains("rotary") || data_input_raw.contains("rotary") {
-            crate::debug_println!("[EXPAND DEBUG] Node: {}", node_name);
-            crate::debug_println!("  data_input_raw: {}", data_input_raw);
-            crate::debug_println!("  shape_input_raw: {}", shape_input_raw);
-            crate::debug_println!(
+            log::debug!("[EXPAND DEBUG] Node: {}", node_name);
+            log::debug!("  data_input_raw: {}", data_input_raw);
+            log::debug!("  shape_input_raw: {}", shape_input_raw);
+            log::debug!(
                 "  In const_values: {}",
                 context.const_values.contains_key(&shape_input_raw)
             );
-            crate::debug_println!(
+            log::debug!(
                 "  In initializers: {}",
                 context.initializers.contains_key(shape_input_raw.as_str())
             );
@@ -632,12 +652,12 @@ impl ReshapeHandler {
             .or_else(|| context.const_values.get(&shape_key_trimmed))
         {
             if shape_input_raw.contains("rotary") || data_input_raw.contains("rotary") {
-                crate::debug_println!("  Shape from const_values: {:?}", values);
+                log::debug!("  Shape from const_values: {:?}", values);
             }
             values.clone()
         } else if let Some(initializer) = context.initializers.get(shape_input_raw.as_str()) {
             if shape_input_raw.contains("rotary") || data_input_raw.contains("rotary") {
-                crate::debug_println!("  Shape from initializer");
+                log::debug!("  Shape from initializer");
             }
             let raw_data = initializer.raw_data.as_slice();
             if !raw_data.is_empty() {
@@ -735,7 +755,7 @@ impl ReshapeHandler {
                         .any(|d| matches!(d, rustnn::graph::Dimension::Dynamic(_)))
                 });
                 if output_shape.iter().all(|&d| d > 0) && !has_dynamic_output_dim {
-                    crate::debug_println!(
+                    log::debug!(
                         "[expand] using inferred output shape for {}: {:?}",
                         node_name,
                         output_shape
@@ -1232,6 +1252,18 @@ impl ReshapeHandler {
         // ONNX exporter currently drops the axes input on Squeeze, making ORT
         // squeeze every unit dim (e.g. batch=1) instead of only the requested
         // ones. A reshape encodes the exact output shape and sidesteps that.
+        if let Some(dims) = node
+            .output
+            .first()
+            .and_then(|out| value_shape_dims_for(out, context.value_shape_dims))
+            .filter(|dims| {
+                dims.iter()
+                    .any(|d| matches!(d, rustnn::graph::Dimension::Dynamic(_)))
+            })
+        {
+            let out = reshape_with_shape(b, input0, &output_name, ast_dims_to_mldim(dims))?;
+            return Self::record_output(b, node, &output_name, out, context, None);
+        }
         if let Some(input_shape) = context.resolve_shape(inputs[0].as_str()) {
             if !axes_values.is_empty()
                 && input_shape.iter().all(|&d| d > 0)

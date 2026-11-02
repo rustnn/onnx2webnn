@@ -1,6 +1,6 @@
 # onnx2webnn
 
-onnx2webnn lowers ONNX opsets **1–26** through [RustNN](../rustnn)'s WebNN builder. `convert`
+onnx2webnn lowers ONNX opsets **1–26** through [RustNN](https://github.com/rustnn/rustnn)'s WebNN builder. `convert`
 builds the graph with CPU ORT by default; `--backend coreml` or `--backend trtx` selects an
 available alternative.
 `--no-backend-graph-build` exports a reloadable `.webnn`/Safetensors pair without building it.
@@ -15,9 +15,9 @@ also reloads the pair and compares execution with native CPU ORT. These modes ar
 
 - A stable Rust toolchain.
 - `protoc` (Debian/Ubuntu: `protobuf-compiler`; macOS: Homebrew `protobuf`).
-- A sibling `../rustnn` checkout, as required by `Cargo.toml`.
-- ONNX Runtime 1.27+ for ORT graph builds and validation. Export-only conversion does not load it.
-  RustNN can download the pinned version:
+- Cargo downloads the tested RustNN revision pinned in `Cargo.toml`.
+- ONNX Runtime 1.29+ for ORT graph builds and validation. Export-only conversion does not load it.
+  An optional sibling RustNN checkout can download the runtime:
 
 ```powershell
 make -C ../rustnn onnxruntime-download
@@ -33,6 +33,12 @@ cargo build --release
 ```
 
 The `Makefile` also provides `build`, `test`, `fmt`, and `check` targets.
+
+Update the RustNN revision and `Cargo.lock` together after testing compatibility. The weekly
+[compatibility workflow](.github/workflows/rustnn-compatibility.yml) also checks compilation
+against RustNN `main` on Linux and macOS; it is diagnostic and can be run manually.
+For local RustNN development, override the Git dependency with
+`cargo --config 'patch."https://github.com/rustnn/rustnn".rustnn.path="../rustnn"' check`.
 
 ## Convert
 
@@ -75,13 +81,14 @@ dynamic shapes or further specialization.
 | Flag | Purpose |
 |------|---------|
 | `--input` | Input `.onnx` path (required) |
+| `-o`, `--output PATH` | Write to a `.webnn` file or an extensionless directory containing `<input-stem>.webnn`; create missing directories. Weights are saved alongside it as `.safetensors`. Omit to use the cache. |
 | `--optimize` | Constant folding and shape propagation |
 | `--override-dim NAME=VALUE` | Bind a symbolic dim (repeatable); unnamed zero dims are addressed as `<input>_dim<axis>` |
 | `--override-dims-file` | JSON overrides (`freeDimensionOverrides` or flat object) |
 | `--pin-input NAME=VALUE` | Freeze a graph input to `true`/`false`/an integer (repeatable) |
 | `--allow-missing-external-data` | Zero-fill external tensors whose data file is absent (weight-stripped skeleton models) |
 | `--experimental-dynamic-inputs` | Preserve unresolved symbolic dims as dynamic metadata |
-| `--debug` | Verbose conversion logging (global) |
+| `--debug` | Debug logging from the converter and rustnn (global); `RUST_LOG` overrides the log filter |
 | `--backend ort\|coreml\|trtx` | Select the graph-build/validation backend (global; default `ort`); CoreML and TensorRT require their Cargo features |
 | `--no-backend-graph-build` | Overwrite cache-backed `.onnx`, `.webnn`, and Safetensors artifacts without compiling a backend graph |
 | `--build-and-export` | Overwrite cache artifacts and compile the selected backend graph without numerical comparison |

@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+use rustnn::mlcontext::Backend;
+
 use super::full_model::cache_full_model;
 use super::manifest::{load_manifest_from, Entry, Selection};
 use crate::{
-    convert_onnx_with_backend, validate_cached_model_with_options_on_backend, BackendChoice,
-    ConvertOptions,
+    convert_onnx_with_backend, validate_cached_model_with_options_on_backend, ConvertOptions,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -49,7 +50,7 @@ pub struct RunOptions {
     pub manifest: PathBuf,
     pub jobs: usize,
     pub webnn_cache: PathBuf,
-    pub backend: BackendChoice,
+    pub backend: Backend,
 }
 
 impl RunOptions {
@@ -64,7 +65,7 @@ impl RunOptions {
                 .unwrap_or_else(|| root.join("tests/models/manifest.json")),
             jobs: 1,
             webnn_cache: crate::cache::webnn_cache_dir()?,
-            backend: BackendChoice::Ort,
+            backend: Backend::Onnx,
         })
     }
 }

@@ -28,12 +28,12 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
-            test_backend: ort
+            test_backend: onnx
             ort_archive: onnxruntime-linux-x64
             ort_ext: tgz
             ort_dylib: lib/libonnxruntime.so
           - os: windows-latest
-            test_backend: ort
+            test_backend: onnx
             ort_archive: onnxruntime-win-x64
             ort_ext: zip
             ort_dylib: lib/onnxruntime.dll

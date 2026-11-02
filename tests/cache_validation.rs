@@ -142,7 +142,7 @@ fn constant_node_quantization_parameters_validate_after_reload() {
     );
     fs::write(&source, fixture.encode_to_vec()).expect("write ONNX fixture");
     let result = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
-        .args(["convert", "--input"])
+        .args(["--backend", "onnx", "convert", "--input"])
         .arg(&source)
         .arg("--validate")
         .env("O2W_ONNX_CACHE", dir.path().join("onnx"))
@@ -177,7 +177,7 @@ fn ambiguous_quantized_feed_falls_back_with_a_warning() {
     );
     fs::write(&source, fixture.encode_to_vec()).expect("write ONNX fixture");
     let result = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
-        .args(["convert", "--input"])
+        .args(["--backend", "onnx", "convert", "--input"])
         .arg(&source)
         .arg("--validate")
         .env("O2W_ONNX_CACHE", dir.path().join("onnx"))

@@ -59,6 +59,10 @@ enum Command {
         #[arg(long, short)]
         input: String,
 
+        /// Output .webnn file or extensionless directory (created as needed)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+
         /// Override a symbolic dimension, e.g. batch_size=1 (repeatable)
         #[arg(long = "override-dim")]
         override_dims: Vec<String>,
@@ -221,6 +225,41 @@ fn cache_paths(input: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
     ))
 }
 
+fn conversion_paths(input: &Path, output: Option<&Path>) -> anyhow::Result<(PathBuf, PathBuf)> {
+    let (onnx, cached_webnn) = cache_paths(input)?;
+    let webnn = match output {
+        None => cached_webnn,
+        Some(path) => match path.extension() {
+            Some(ext) if ext == "webnn" => {
+                anyhow::ensure!(
+                    !path.is_dir(),
+                    "output .webnn path is a directory: {}",
+                    path.display()
+                );
+                path.to_path_buf()
+            }
+            None => {
+                anyhow::ensure!(
+                    !path.is_file(),
+                    "output directory path is a file: {}",
+                    path.display()
+                );
+                let stem = input
+                    .file_stem()
+                    .ok_or_else(|| anyhow::anyhow!("input has no file name"))?;
+                let mut filename = stem.to_os_string();
+                filename.push(".webnn");
+                path.join(filename)
+            }
+            Some(_) => anyhow::bail!(
+                "output must be a .webnn file or an extensionless directory: {}",
+                path.display()
+            ),
+        },
+    };
+    Ok((onnx, webnn))
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let default_filter = if cli.debug { "debug" } else { "warn" };
@@ -250,6 +289,7 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Convert {
             input,
+            output,
             override_dims,
             override_dims_file,
             pin_inputs,
@@ -319,7 +359,7 @@ fn main() -> anyhow::Result<()> {
 
             let validation_overrides = free_dim_overrides.clone();
             if validate_cached {
-                let (onnx_cache, webnn_cache) = cache_paths(input_path)?;
+                let (onnx_cache, webnn_cache) = conversion_paths(input_path, output.as_deref())?;
                 if !onnx_cache.exists() || !webnn_cache.exists() {
                     return Err(anyhow::anyhow!(
                         "cached validation requires {} and {}; run with --no-backend-graph-build or --validate first",
@@ -348,9 +388,10 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
 
-            let cache_paths = (backend.is_none() || build_and_export || validate)
-                .then(|| cache_paths(input_path))
-                .transpose()?;
+            let cache_paths =
+                (backend.is_none() || build_and_export || validate || output.is_some())
+                    .then(|| conversion_paths(input_path, output.as_deref()))
+                    .transpose()?;
             if let Some((onnx_cache, _)) = &cache_paths {
                 cache_onnx_model(input_path, onnx_cache, allow_missing_external_data)
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -379,7 +420,7 @@ fn main() -> anyhow::Result<()> {
             }
             if let Some((onnx_cache, webnn_cache)) = &cache_paths {
                 println!("✓ cached ONNX at {}", onnx_cache.display());
-                println!("✓ cached WebNN at {}", webnn_cache.display());
+                println!("✓ WebNN at {}", webnn_cache.display());
                 if validate {
                     let backend = backend.ok_or_else(|| {
                         anyhow::anyhow!("validate models requires setting a backend")

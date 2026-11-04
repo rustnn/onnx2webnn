@@ -12,12 +12,17 @@ path = "src/lib.rs"
 [[bin]]
 name = "onnx2webnn"
 path = "src/main.rs"
+required-features = ["env_logging"]
 
 [features]
+# Enable logging by default in main binary
+default = ["env_logging"]
 # Make rustnn's CoreML backend available for --backend coreml (macOS only).
 coreml = ["rustnn/coreml-runtime"]
 # Make rustnn's TensorRT-RTX backend available for --backend trtx (NVIDIA GPU).
 trtx = ["rustnn/trtx-runtime"]
+# Enable logging on RUST_LOG (could be replaced by tracing-subscriber) 
+env_logging = ["dep:pretty_env_logger"]
 
 [dependencies]
 anyhow = "1.0"
@@ -36,10 +41,11 @@ rustnn = { git = "https://github.com/rustnn/rustnn", branch = "main", default-fe
 bytemuck = "1.15"
 webnn-onnx-utils = { git = "https://github.com/rustnn/webnn-onnx-utils", branch = "main" }
 huggingface-hub = { git = "https://github.com/huggingface/huggingface_hub_rust.git", rev = "20acfd61a767dcf7d6a0cb7f4a02ac8406fd8a14", version = "0.0.1", features = ["blocking", "xet"] }
+pretty_env_logger = { version = "0.5", optional = true }
 
 [dev-dependencies]
-pretty_env_logger = "0.5"
 tempfile = "3.8"
+pretty_env_logger = "0.5"
 
 [patch.crates-io]
 webnn-onnx-utils = { git = "https://github.com/rustnn/webnn-onnx-utils", branch = "main" }

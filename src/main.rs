@@ -261,6 +261,8 @@ fn conversion_paths(input: &Path, output: Option<&Path>) -> anyhow::Result<(Path
 }
 
 fn main() -> anyhow::Result<()> {
+    pretty_env_logger::init();
+
     let cli = Cli::parse();
     let backend = cli.backend;
     if !matches!(cli.cmd, Command::OperatorCatalog) {

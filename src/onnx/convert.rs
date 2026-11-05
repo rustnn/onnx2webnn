@@ -1553,6 +1553,8 @@ fn load_external_tensor_data(
     onnx_path: &Path,
     zero_fill_missing: bool,
 ) -> Result<(), OnnxError> {
+    log::info!("Resolving external tensor data for {onnx_path:?}");
+
     const EXTERNAL: i32 = 1; // TensorProto_DataLocation::External
     let graph = match model.graph.as_mut() {
         Some(g) => g,
@@ -1570,10 +1572,16 @@ fn load_external_tensor_data(
     // tensor is copied into `raw_data` anyway.
     let mut files: std::collections::HashMap<String, fs::File> = std::collections::HashMap::new();
 
-    for tensor in graph.initializer.iter_mut() {
+    let total_initializers = graph.initializer.len();
+    for (i, tensor) in graph.initializer.iter_mut().enumerate() {
         if tensor.data_location != EXTERNAL {
             continue;
         }
+        log::debug!(
+            "Resolving external tensor data for {:?} ({} of {total_initializers})",
+            tensor.name,
+            i + 1
+        );
         let mut location = None;
         let mut offset = 0usize;
         let mut length = None;

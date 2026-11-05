@@ -118,6 +118,9 @@ jobs:
       - name: Build
         run: cargo build --release --locked ${{ matrix.cargo_flags }}
 
+      - name: Clippy
+        run: cargo clippy --locked ${{ matrix.cargo_flags }} -- -D warnings
+
       - name: Check generated operator views
         if: runner.os == 'Linux'
         run: O2W_CATALOG_BIN=target/release/onnx2webnn python3 scripts/generate_operator_catalog.py --check

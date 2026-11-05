@@ -313,7 +313,9 @@ pub fn tensor_proto_to_bytes(tensor: &TensorProto) -> Result<Vec<u8>, OnnxError>
         let values: Vec<f64> = if !tensor.raw_data.is_empty() {
             tensor
                 .raw_data
-                .as_chunks::<8>().0.iter()
+                .as_chunks::<8>()
+                .0
+                .iter()
                 .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
                 .collect()
         } else {

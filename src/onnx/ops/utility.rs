@@ -1065,9 +1065,7 @@ impl UtilityHandler {
                             dtype = DataType::Float32;
                             if !t.float_data.is_empty() {
                                 fill_value_i64 = t.float_data.as_slice()[0].to_bits() as i64;
-                            } else if !t.raw_data.is_empty()
-                                && t.raw_data.len() >= 4
-                            {
+                            } else if !t.raw_data.is_empty() && t.raw_data.len() >= 4 {
                                 let raw = &t.raw_data.as_slice()[..4];
                                 let bits = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
                                 fill_value_i64 = bits as i64;
@@ -1079,9 +1077,7 @@ impl UtilityHandler {
                             dtype = DataType::Float16;
                             if !t.int32_data.is_empty() {
                                 fill_value_i64 = t.int32_data.as_slice()[0] as i64;
-                            } else if !t.raw_data.is_empty()
-                                && t.raw_data.len() >= 2
-                            {
+                            } else if !t.raw_data.is_empty() && t.raw_data.len() >= 2 {
                                 let raw = &t.raw_data.as_slice()[..2];
                                 fill_value_i64 = u16::from_le_bytes([raw[0], raw[1]]) as i64;
                             } else {
@@ -1093,9 +1089,7 @@ impl UtilityHandler {
                             dtype = DataType::Int64;
                             if !t.int64_data.is_empty() {
                                 fill_value_i64 = t.int64_data.as_slice()[0];
-                            } else if !t.raw_data.is_empty()
-                                && t.raw_data.len() >= 8
-                            {
+                            } else if !t.raw_data.is_empty() && t.raw_data.len() >= 8 {
                                 let raw = &t.raw_data.as_slice()[..8];
                                 fill_value_i64 = i64::from_le_bytes([
                                     raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
@@ -1690,13 +1684,17 @@ impl UtilityHandler {
                 if !raw.is_empty() {
                     if t.data_type == crate::protos::onnx::TensorProto_DataType::Int32 as i32 {
                         return Some(
-                            raw.as_chunks::<4>().0.iter()
+                            raw.as_chunks::<4>()
+                                .0
+                                .iter()
                                 .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                                 .collect(),
                         );
                     }
                     return Some(
-                        raw.as_chunks::<8>().0.iter()
+                        raw.as_chunks::<8>()
+                            .0
+                            .iter()
                             .map(|c| {
                                 i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                             })

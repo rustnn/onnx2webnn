@@ -256,14 +256,18 @@ fn read_int64_tensor_proto(t: &TensorProto) -> Option<Vec<i64>> {
         if t.data_type == TensorProto_DataType::Int32 as i32 {
             return Some(
                 t.raw_data
-                    .as_chunks::<4>().0.iter()
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                     .collect(),
             );
         }
         return Some(
             t.raw_data
-                .as_chunks::<8>().0.iter()
+                .as_chunks::<8>()
+                .0
+                .iter()
                 .map(|c| i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
                 .collect(),
         );

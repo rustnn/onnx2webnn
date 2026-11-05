@@ -786,11 +786,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
 
             let onnx_type = initializer.data_type;
             let data_type = map_onnx_data_type(onnx_type)?;
-            let shape: Vec<u32> = initializer
-                .dims
-                .iter()
-                .map(|d| *d as u32)
-                .collect();
+            let shape: Vec<u32> = initializer.dims.iter().map(|d| *d as u32).collect();
 
             let bytes = tensor_proto_to_bytes(initializer)?;
             b.register_constant_from_bytes(initializer.name.as_str(), data_type, &shape, bytes)?;
@@ -1039,11 +1035,15 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 let raw = initializer.raw_data.as_slice();
                 let values = if !raw.is_empty() {
                     if initializer.data_type == TensorProto_DataType::Int32 as i32 {
-                        raw.as_chunks::<4>().0.iter()
+                        raw.as_chunks::<4>()
+                            .0
+                            .iter()
                             .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                             .collect()
                     } else {
-                        raw.as_chunks::<8>().0.iter()
+                        raw.as_chunks::<8>()
+                            .0
+                            .iter()
                             .map(|c| {
                                 i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                             })
@@ -1052,11 +1052,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 } else if !initializer.int64_data.is_empty() {
                     initializer.int64_data.to_vec()
                 } else if !initializer.int32_data.is_empty() {
-                    initializer
-                        .int32_data
-                        .iter()
-                        .map(|&v| v as i64)
-                        .collect()
+                    initializer.int32_data.iter().map(|&v| v as i64).collect()
                 } else {
                     Vec::new()
                 };
@@ -1081,11 +1077,15 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         let raw = tensor.raw_data.as_slice();
                         let values = if !raw.is_empty() {
                             if tensor.data_type == TensorProto_DataType::Int32 as i32 {
-                                raw.as_chunks::<4>().0.iter()
+                                raw.as_chunks::<4>()
+                                    .0
+                                    .iter()
                                     .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                                     .collect()
                             } else {
-                                raw.as_chunks::<8>().0.iter()
+                                raw.as_chunks::<8>()
+                                    .0
+                                    .iter()
                                     .map(|c| {
                                         i64::from_le_bytes([
                                             c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7],
@@ -1096,11 +1096,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         } else if !tensor.int64_data.is_empty() {
                             tensor.int64_data.to_vec()
                         } else if !tensor.int32_data.is_empty() {
-                            tensor
-                                .int32_data
-                                .iter()
-                                .map(|&v| v as i64)
-                                .collect()
+                            tensor.int32_data.iter().map(|&v| v as i64).collect()
                         } else {
                             Vec::new()
                         };

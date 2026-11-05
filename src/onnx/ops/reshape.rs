@@ -185,7 +185,9 @@ impl ReshapeHandler {
                 let raw = t.raw_data.as_slice();
                 if !raw.is_empty() {
                     let mut axes: Vec<i64> = raw
-                        .as_chunks::<8>().0.iter()
+                        .as_chunks::<8>()
+                        .0
+                        .iter()
                         .map(|c| {
                             i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                         })
@@ -201,8 +203,7 @@ impl ReshapeHandler {
                     }
                     return Ok(axes);
                 } else if !t.int32_data.is_empty() {
-                    let mut axes: Vec<i64> =
-                        t.int32_data.iter().map(|&v| v as i64).collect();
+                    let mut axes: Vec<i64> = t.int32_data.iter().map(|&v| v as i64).collect();
                     if axes.is_empty() {
                         axes.push(0);
                     }
@@ -250,13 +251,17 @@ impl ReshapeHandler {
                 if !raw_data.is_empty() {
                     match initializer.data_type {
                         x if x == TensorProto_DataType::Int32 as i32 => raw_data
-                            .as_chunks::<4>().0.iter()
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
                             .map(|chunk| {
                                 i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as i64
                             })
                             .collect(),
                         _ => raw_data
-                            .as_chunks::<8>().0.iter()
+                            .as_chunks::<8>()
+                            .0
+                            .iter()
                             .map(|chunk| {
                                 i64::from_le_bytes([
                                     chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
@@ -268,11 +273,7 @@ impl ReshapeHandler {
                 } else if !initializer.int64_data.is_empty() {
                     initializer.int64_data.to_vec()
                 } else if !initializer.int32_data.is_empty() {
-                    initializer
-                        .int32_data
-                        .iter()
-                        .map(|&v| v as i64)
-                        .collect()
+                    initializer.int32_data.iter().map(|&v| v as i64).collect()
                 } else {
                     Vec::new()
                 }
@@ -639,13 +640,17 @@ impl ReshapeHandler {
             if !raw_data.is_empty() {
                 match initializer.data_type {
                     x if x == TensorProto_DataType::Int32 as i32 => raw_data
-                        .as_chunks::<4>().0.iter()
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|chunk| {
                             i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as i64
                         })
                         .collect(),
                     _ => raw_data
-                        .as_chunks::<8>().0.iter()
+                        .as_chunks::<8>()
+                        .0
+                        .iter()
                         .map(|chunk| {
                             i64::from_le_bytes([
                                 chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
@@ -657,11 +662,7 @@ impl ReshapeHandler {
             } else if !initializer.int64_data.is_empty() {
                 initializer.int64_data.to_vec()
             } else if !initializer.int32_data.is_empty() {
-                initializer
-                    .int32_data
-                    .iter()
-                    .map(|&v| v as i64)
-                    .collect()
+                initializer.int32_data.iter().map(|&v| v as i64).collect()
             } else {
                 Vec::new()
             }
@@ -1468,13 +1469,17 @@ impl ReshapeHandler {
             if !raw.is_empty() {
                 match tensor.data_type {
                     x if x == TensorProto_DataType::Int64 as i32 => raw
-                        .as_chunks::<8>().0.iter()
+                        .as_chunks::<8>()
+                        .0
+                        .iter()
                         .map(|c| {
                             i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                         })
                         .collect(),
                     x if x == TensorProto_DataType::Int32 as i32 => raw
-                        .as_chunks::<4>().0.iter()
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                         .collect(),
                     _ => {
@@ -1486,11 +1491,7 @@ impl ReshapeHandler {
             } else if !tensor.int64_data.is_empty() {
                 tensor.int64_data.to_vec()
             } else if !tensor.int32_data.is_empty() {
-                tensor
-                    .int32_data
-                    .iter()
-                    .map(|&v| v as i64)
-                    .collect()
+                tensor.int32_data.iter().map(|&v| v as i64).collect()
             } else {
                 return Err(OnnxError::InvalidShape(
                     "Tile repeats tensor has no data".to_string(),

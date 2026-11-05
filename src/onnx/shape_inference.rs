@@ -1092,13 +1092,17 @@ pub fn infer_node_output_shape(
                     if shape_tensor.data_type == TensorProto_DataType::Int32 as i32 {
                         shape_tensor
                             .raw_data
-                            .as_chunks::<4>().0.iter()
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
                             .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                             .collect()
                     } else {
                         shape_tensor
                             .raw_data
-                            .as_chunks::<8>().0.iter()
+                            .as_chunks::<8>()
+                            .0
+                            .iter()
                             .map(|c| {
                                 i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                             })
@@ -1107,11 +1111,7 @@ pub fn infer_node_output_shape(
                 } else if !shape_tensor.int64_data.is_empty() {
                     shape_tensor.int64_data.to_vec()
                 } else if !shape_tensor.int32_data.is_empty() {
-                    shape_tensor
-                        .int32_data
-                        .iter()
-                        .map(|&v| v as i64)
-                        .collect()
+                    shape_tensor.int32_data.iter().map(|&v| v as i64).collect()
                 } else {
                     Vec::new()
                 }
@@ -1275,11 +1275,10 @@ pub fn infer_node_output_shape(
                 return None;
             }
             let x_shape = value_shapes.get(ins[0].as_str())?.clone();
-            let w_shape = value_shapes.get(ins[1].as_str()).cloned().or_else(|| {
-                initializers
-                    .get(ins[1].as_str())
-                    .map(|t| t.dims.to_vec())
-            })?;
+            let w_shape = value_shapes
+                .get(ins[1].as_str())
+                .cloned()
+                .or_else(|| initializers.get(ins[1].as_str()).map(|t| t.dims.to_vec()))?;
             if x_shape.len() < 3 || w_shape.len() < 3 {
                 return None;
             }
@@ -1411,7 +1410,9 @@ pub fn infer_node_output_shape(
                         if !raw.is_empty() {
                             if t.data_type == TensorProto_DataType::Int32 as i32 {
                                 return Some(
-                                    raw.as_chunks::<4>().0.iter()
+                                    raw.as_chunks::<4>()
+                                        .0
+                                        .iter()
                                         .map(|c| {
                                             i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64
                                         })
@@ -1419,7 +1420,9 @@ pub fn infer_node_output_shape(
                                 );
                             } else {
                                 return Some(
-                                    raw.as_chunks::<8>().0.iter()
+                                    raw.as_chunks::<8>()
+                                        .0
+                                        .iter()
                                         .map(|c| {
                                             i64::from_le_bytes([
                                                 c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7],
@@ -1431,9 +1434,7 @@ pub fn infer_node_output_shape(
                         } else if !t.int64_data.is_empty() {
                             return Some(t.int64_data.to_vec());
                         } else if !t.int32_data.is_empty() {
-                            return Some(
-                                t.int32_data.iter().map(|&v| v as i64).collect(),
-                            );
+                            return Some(t.int32_data.iter().map(|&v| v as i64).collect());
                         }
                     }
                 }
@@ -1508,7 +1509,9 @@ fn integral_float_tensor_as_i64(tensor: &TensorProto) -> Option<Vec<i64>> {
     let raw = tensor.raw_data.as_slice();
     let floats: Vec<f64> = if tensor.data_type == TensorProto_DataType::Float as i32 {
         if !raw.is_empty() {
-            raw.as_chunks::<4>().0.iter()
+            raw.as_chunks::<4>()
+                .0
+                .iter()
                 .map(|c| f64::from(f32::from_le_bytes([c[0], c[1], c[2], c[3]])))
                 .collect()
         } else {
@@ -1516,7 +1519,9 @@ fn integral_float_tensor_as_i64(tensor: &TensorProto) -> Option<Vec<i64>> {
         }
     } else if tensor.data_type == TensorProto_DataType::Float16 as i32 {
         if !raw.is_empty() {
-            raw.as_chunks::<2>().0.iter()
+            raw.as_chunks::<2>()
+                .0
+                .iter()
                 .map(|c| f64::from(half::f16::from_bits(u16::from_le_bytes([c[0], c[1]])).to_f32()))
                 .collect()
         } else {
@@ -1528,7 +1533,9 @@ fn integral_float_tensor_as_i64(tensor: &TensorProto) -> Option<Vec<i64>> {
         }
     } else if tensor.data_type == TensorProto_DataType::Double as i32 {
         if !raw.is_empty() {
-            raw.as_chunks::<8>().0.iter()
+            raw.as_chunks::<8>()
+                .0
+                .iter()
                 .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
                 .collect()
         } else {
@@ -1664,7 +1671,9 @@ fn read_int64_values_from_maps(
     if !raw.is_empty() {
         if tensor.data_type == TensorProto_DataType::Int32 as i32 {
             return Some(
-                raw.as_chunks::<4>().0.iter()
+                raw.as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                     .collect(),
             );
@@ -1681,7 +1690,9 @@ fn read_int64_values_from_maps(
             return None;
         }
         return Some(
-            raw.as_chunks::<8>().0.iter()
+            raw.as_chunks::<8>()
+                .0
+                .iter()
                 .map(|c| i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
                 .collect(),
         );
@@ -1690,13 +1701,7 @@ fn read_int64_values_from_maps(
         return Some(tensor.int64_data.to_vec());
     }
     if !tensor.int32_data.is_empty() {
-        return Some(
-            tensor
-                .int32_data
-                .iter()
-                .map(|&v| v as i64)
-                .collect(),
-        );
+        return Some(tensor.int32_data.iter().map(|&v| v as i64).collect());
     }
     None
 }
@@ -1828,7 +1833,9 @@ fn read_float32_values_from_maps(
         return Some(
             tensor
                 .raw_data
-                .as_chunks::<4>().0.iter()
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect(),
         );
@@ -2768,10 +2775,7 @@ fn fold_shape_constants(
             }
 
             if op_type == "Shape" {
-                if let (Some(inp), Some(out)) = (
-                    node.input.first(),
-                    node.output.first(),
-                ) {
+                if let (Some(inp), Some(out)) = (node.input.first(), node.output.first()) {
                     let out = out.to_string();
                     if let Some(shape) = value_shapes.get(inp).cloned() {
                         if !options.require_positive_dims || shape.iter().all(|d| *d > 0) {
@@ -2812,11 +2816,9 @@ fn fold_shape_constants(
                     }
                 }
             } else if op_type == "Gather" {
-                if let (Some(data_name), Some(indices_name), Some(out)) = (
-                    node.input.first(),
-                    node.input.get(1),
-                    node.output.first(),
-                ) {
+                if let (Some(data_name), Some(indices_name), Some(out)) =
+                    (node.input.first(), node.input.get(1), node.output.first())
+                {
                     if let (Some(data), Some(indices)) =
                         (const_values.get(data_name), const_values.get(indices_name))
                     {
@@ -2880,11 +2882,9 @@ fn fold_shape_constants(
                 }
             } else if matches!(op_type, "Add" | "Sub" | "Mul" | "Div" | "Mod") {
                 if node.input.len() >= 2 {
-                    if let (Some(a_name), Some(b_name), Some(out)) = (
-                        node.input.first(),
-                        node.input.get(1),
-                        node.output.first(),
-                    ) {
+                    if let (Some(a_name), Some(b_name), Some(out)) =
+                        (node.input.first(), node.input.get(1), node.output.first())
+                    {
                         let a = const_values.get(a_name);
                         let b = const_values.get(b_name);
                         if let (Some(a), Some(b)) = (a, b) {
@@ -2906,10 +2906,8 @@ fn fold_shape_constants(
                                 // Force the correct shape - Binary operations compute exact output shape
                                 value_shapes.insert(out.to_string(), out_shape.clone());
                                 value_shapes.insert(sanitize_identifier(out), out_shape);
-                                if let Some(dtype) = node
-                                    .input
-                                    .iter()
-                                    .find_map(|i| value_types.get(i).cloned())
+                                if let Some(dtype) =
+                                    node.input.iter().find_map(|i| value_types.get(i).cloned())
                                 {
                                     value_types.insert(out.to_string(), dtype);
                                 }
@@ -2918,10 +2916,7 @@ fn fold_shape_constants(
                     }
                 }
             } else if op_type == "Unsqueeze" || op_type == "Squeeze" {
-                if let (Some(inp), Some(out)) = (
-                    node.input.first(),
-                    node.output.first(),
-                ) {
+                if let (Some(inp), Some(out)) = (node.input.first(), node.output.first()) {
                     if let Some(vals) = const_values.get(inp).cloned() {
                         // Propagate dynamic dim metadata
                         if options.experimental_dynamic_inputs {
@@ -2993,10 +2988,7 @@ fn fold_shape_constants(
                 }
             } else if op_type == "Cast" {
                 // Integer Cast is common in Resize sizes subgraphs (Gather/Concat -> Cast -> Concat).
-                if let (Some(inp), Some(out)) = (
-                    node.input.first(),
-                    node.output.first(),
-                ) {
+                if let (Some(inp), Some(out)) = (node.input.first(), node.output.first()) {
                     let to_type = node
                         .attribute
                         .iter()
@@ -3053,10 +3045,7 @@ fn fold_shape_constants(
                     }
                 }
             } else if op_type == "Neg" {
-                if let (Some(inp), Some(out)) = (
-                    node.input.first(),
-                    node.output.first(),
-                ) {
+                if let (Some(inp), Some(out)) = (node.input.first(), node.output.first()) {
                     if let Some(vals) = const_values.get(inp.as_str()).cloned() {
                         const_values.insert(out.to_string(), vals.iter().map(|v| -v).collect());
                         if let Some(shape) = value_shapes.get(inp.as_str()).cloned() {
@@ -3070,10 +3059,7 @@ fn fold_shape_constants(
             } else if op_type == "Transpose" {
                 // Fold Transpose over small 2-D integer consts (pad-spec chains:
                 // build [[l,r],...] -> reverse -> transpose -> flatten).
-                if let (Some(inp), Some(out)) = (
-                    node.input.first(),
-                    node.output.first(),
-                ) {
+                if let (Some(inp), Some(out)) = (node.input.first(), node.output.first()) {
                     if let (Some(data), Some(shape)) = (
                         const_values.get(inp.as_str()).cloned(),
                         value_shapes.get(inp.as_str()).cloned(),
@@ -3105,9 +3091,7 @@ fn fold_shape_constants(
             } else if op_type == "Slice" {
                 // Fold Slice over integer shape vectors (common for Resize sizes = Concat(Slice(Shape), HW)).
                 let inputs = node.input.as_slice();
-                if let (Some(data_name), Some(out)) =
-                    (inputs.first(), node.output.first())
-                {
+                if let (Some(data_name), Some(out)) = (inputs.first(), node.output.first()) {
                     if let Some(data) = const_values.get(data_name.as_str()).cloned() {
                         let read_ints = |idx: usize| -> Option<Vec<i64>> {
                             let name = inputs.get(idx)?;
@@ -3176,11 +3160,9 @@ fn fold_shape_constants(
                 }
             } else if op_type == "Range" {
                 if node.input.len() == 3 {
-                    if let (Some(start_name), Some(limit_name), Some(delta_name)) = (
-                        node.input.first(),
-                        node.input.get(1),
-                        node.input.get(2),
-                    ) {
+                    if let (Some(start_name), Some(limit_name), Some(delta_name)) =
+                        (node.input.first(), node.input.get(1), node.input.get(2))
+                    {
                         if options.experimental_dynamic_inputs {
                             let start_dim =
                                 dynamic_scalar_dimension_for_value(start_name, value_shape_dims);
@@ -3258,10 +3240,7 @@ fn fold_shape_constants(
                     }
                 }
             } else if op_type == "Unsqueeze" && options.experimental_dynamic_inputs {
-                if let (Some(inp), Some(out)) = (
-                    node.input.first(),
-                    node.output.first(),
-                ) {
+                if let (Some(inp), Some(out)) = (node.input.first(), node.output.first()) {
                     if let Some(dims) = value_shape_dims_for_input(graph, inp, value_shape_dims) {
                         if !dims.is_empty() {
                             value_shape_dims.insert(out.to_string(), dims.to_vec());
@@ -3414,11 +3393,9 @@ fn fold_shape_constants(
             } else if op_type == "Expand" {
                 // Materialize Expand over integer consts (Swin/roll meshgrid
                 // index construction). Bounded to keep folded payloads small.
-                if let (Some(data_name), Some(shape_name), Some(out)) = (
-                    node.input.first(),
-                    node.input.get(1),
-                    node.output.first(),
-                ) {
+                if let (Some(data_name), Some(shape_name), Some(out)) =
+                    (node.input.first(), node.input.get(1), node.output.first())
+                {
                     if let (Some(data), Some(target)) = (
                         const_values.get(data_name.as_str()).cloned(),
                         const_values.get(shape_name.as_str()).cloned(),
@@ -3532,11 +3509,9 @@ fn fold_shape_constants(
             } else if op_type == "Equal" {
                 // Equal(a, b) -> boolean tensor (represented as i64: 1 for true, 0 for false)
                 if node.input.len() >= 2 {
-                    if let (Some(a_name), Some(b_name), Some(out)) = (
-                        node.input.first(),
-                        node.input.get(1),
-                        node.output.first(),
-                    ) {
+                    if let (Some(a_name), Some(b_name), Some(out)) =
+                        (node.input.first(), node.input.get(1), node.output.first())
+                    {
                         let a = const_values.get(a_name);
                         let b = const_values.get(b_name);
                         if let (Some(a), Some(b)) = (a, b) {
@@ -3558,11 +3533,9 @@ fn fold_shape_constants(
                 // Integer arithmetic over folded shape scalars/vectors (e.g.
                 // `Mul(Gather(Shape(x), 0), num_heads)` in attention reshape chains).
                 if node.input.len() >= 2 {
-                    if let (Some(a_name), Some(b_name), Some(out)) = (
-                        node.input.first(),
-                        node.input.get(1),
-                        node.output.first(),
-                    ) {
+                    if let (Some(a_name), Some(b_name), Some(out)) =
+                        (node.input.first(), node.input.get(1), node.output.first())
+                    {
                         if let (Some(a), Some(b)) =
                             (const_values.get(a_name), const_values.get(b_name))
                         {
@@ -3818,7 +3791,9 @@ pub(crate) fn read_int_tensor(tensor: &TensorProto) -> Vec<i64> {
     if !raw.is_empty() {
         match tensor.data_type {
             x if x == TensorProto_DataType::Int32 as i32 => raw
-                .as_chunks::<4>().0.iter()
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                 .collect(),
             x if x == TensorProto_DataType::Bool as i32
@@ -3828,7 +3803,9 @@ pub(crate) fn read_int_tensor(tensor: &TensorProto) -> Vec<i64> {
                 raw.iter().map(|&b| i64::from(b)).collect()
             }
             x if x == TensorProto_DataType::Int64 as i32 => raw
-                .as_chunks::<8>().0.iter()
+                .as_chunks::<8>()
+                .0
+                .iter()
                 .map(|c| i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
                 .collect(),
             // Never reinterpret non-integer payloads (float weights, bool
@@ -3838,11 +3815,7 @@ pub(crate) fn read_int_tensor(tensor: &TensorProto) -> Vec<i64> {
     } else if !tensor.int64_data.is_empty() {
         tensor.int64_data.to_vec()
     } else if !tensor.int32_data.is_empty() {
-        tensor
-            .int32_data
-            .iter()
-            .map(|&v| v as i64)
-            .collect()
+        tensor.int32_data.iter().map(|&v| v as i64).collect()
     } else {
         Vec::new()
     }

@@ -89,7 +89,9 @@ impl TensorData {
             match data_type {
                 x if x == TensorProto_DataType::Int64 as i32 => {
                     let values = raw_data
-                        .as_chunks::<8>().0.iter()
+                        .as_chunks::<8>()
+                        .0
+                        .iter()
                         .map(|c| {
                             i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                         })
@@ -98,21 +100,27 @@ impl TensorData {
                 }
                 x if x == TensorProto_DataType::Int32 as i32 => {
                     let values = raw_data
-                        .as_chunks::<4>().0.iter()
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                         .collect();
                     Ok(TensorData::Int32(values))
                 }
                 x if x == TensorProto_DataType::Float as i32 => {
                     let values = raw_data
-                        .as_chunks::<4>().0.iter()
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                         .collect();
                     Ok(TensorData::Float32(values))
                 }
                 x if x == TensorProto_DataType::Double as i32 => {
                     let values = raw_data
-                        .as_chunks::<8>().0.iter()
+                        .as_chunks::<8>()
+                        .0
+                        .iter()
                         .map(|c| {
                             f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                         })

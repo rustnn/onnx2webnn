@@ -43,9 +43,7 @@ impl EvaluatorTrait for RangeEvaluator {
         }
 
         // All inputs must be constants
-        node.input
-            .iter()
-            .all(|inp| ctx.is_constant(inp.as_str()))
+        node.input.iter().all(|inp| ctx.is_constant(inp.as_str()))
     }
 
     fn evaluate(

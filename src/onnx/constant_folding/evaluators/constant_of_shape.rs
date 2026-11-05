@@ -50,13 +50,13 @@ impl EvaluatorTrait for ConstantOfShapeEvaluator {
         node: &NodeProto,
         ctx: &ConstantFoldingContext,
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
-        let input_name =
-            node.input
-                .first()
-                .ok_or_else(|| OnnxError::MissingAttribute {
-                    attr: "input (shape)".to_string(),
-                    op: "ConstantOfShape".to_string(),
-                })?;
+        let input_name = node
+            .input
+            .first()
+            .ok_or_else(|| OnnxError::MissingAttribute {
+                attr: "input (shape)".to_string(),
+                op: "ConstantOfShape".to_string(),
+            })?;
 
         let shape_tensor = ctx.get_constant(input_name.as_str()).ok_or_else(|| {
             OnnxError::ShapeInference(format!(

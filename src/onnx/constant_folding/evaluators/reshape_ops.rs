@@ -51,13 +51,13 @@ impl EvaluatorTrait for UnsqueezeEvaluator {
         node: &NodeProto,
         ctx: &ConstantFoldingContext,
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
-        let input_name =
-            node.input
-                .first()
-                .ok_or_else(|| OnnxError::MissingAttribute {
-                    attr: "input".to_string(),
-                    op: "Unsqueeze".to_string(),
-                })?;
+        let input_name = node
+            .input
+            .first()
+            .ok_or_else(|| OnnxError::MissingAttribute {
+                attr: "input".to_string(),
+                op: "Unsqueeze".to_string(),
+            })?;
 
         let input_tensor = ctx.get_constant(input_name.as_str()).ok_or_else(|| {
             OnnxError::ShapeInference(format!("Input tensor '{}' not found", input_name))
@@ -131,13 +131,13 @@ impl EvaluatorTrait for SqueezeEvaluator {
         node: &NodeProto,
         ctx: &ConstantFoldingContext,
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
-        let input_name =
-            node.input
-                .first()
-                .ok_or_else(|| OnnxError::MissingAttribute {
-                    attr: "input".to_string(),
-                    op: "Squeeze".to_string(),
-                })?;
+        let input_name = node
+            .input
+            .first()
+            .ok_or_else(|| OnnxError::MissingAttribute {
+                attr: "input".to_string(),
+                op: "Squeeze".to_string(),
+            })?;
 
         let input_tensor = ctx.get_constant(input_name.as_str()).ok_or_else(|| {
             OnnxError::ShapeInference(format!("Input tensor '{}' not found", input_name))
@@ -288,13 +288,13 @@ impl EvaluatorTrait for CastEvaluator {
         node: &NodeProto,
         ctx: &ConstantFoldingContext,
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
-        let input_name =
-            node.input
-                .first()
-                .ok_or_else(|| OnnxError::MissingAttribute {
-                    attr: "input".to_string(),
-                    op: "Cast".to_string(),
-                })?;
+        let input_name = node
+            .input
+            .first()
+            .ok_or_else(|| OnnxError::MissingAttribute {
+                attr: "input".to_string(),
+                op: "Cast".to_string(),
+            })?;
 
         let input_tensor = ctx.get_constant(input_name.as_str()).ok_or_else(|| {
             OnnxError::ShapeInference(format!("Input tensor '{}' not found", input_name))

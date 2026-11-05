@@ -1414,7 +1414,11 @@ impl UtilityHandler {
                     let idx = row * blocks as usize + block;
                     if per_byte == 2 {
                         let byte = bytes.get(idx / 2).copied().unwrap_or(0x88);
-                        nibble_value(if idx % 2 == 0 { byte & 0x0F } else { byte >> 4 })
+                        nibble_value(if idx.is_multiple_of(2) {
+                            byte & 0x0F
+                        } else {
+                            byte >> 4
+                        })
                     } else {
                         f32::from(bytes.get(idx).copied().unwrap_or(128))
                     }

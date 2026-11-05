@@ -152,7 +152,7 @@ pub(crate) fn lookup_shape(name: &str, context: &ConversionContext) -> Option<Ve
         return Some(s.clone());
     }
     if let Some(init) = context.initializers.get(name) {
-        return Some(init.dims.as_slice().to_vec());
+        return Some(init.dims.to_vec());
     }
     None
 }

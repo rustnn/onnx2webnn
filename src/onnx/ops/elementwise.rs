@@ -51,7 +51,7 @@ impl OpHandler for ElementwiseHandler {
             )));
         }
 
-        let output_name = if node.output.as_slice().is_empty() {
+        let output_name = if node.output.is_empty() {
             format!("{}_output", node_name)
         } else {
             sanitize_identifier(&node.output.as_slice()[0].to_string())
@@ -82,7 +82,7 @@ impl OpHandler for ElementwiseHandler {
             acc
         };
 
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             b.record_operand(&[output.as_str(), &output_name], out);
         } else {
             b.record_operand(&[&output_name], out);
@@ -182,7 +182,7 @@ fn convert_mod(
         .sub_with_options(a_operand, product, sub_opts)
         .map_err(map_op_error)?;
 
-    if let Some(output) = node.output.as_slice().first() {
+    if let Some(output) = node.output.first() {
         b.record_operand(&[output.as_str(), output_name], out);
     } else {
         b.record_operand(&[output_name], out);

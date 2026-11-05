@@ -89,7 +89,7 @@ impl TensorData {
             match data_type {
                 x if x == TensorProto_DataType::Int64 as i32 => {
                     let values = raw_data
-                        .chunks_exact(8)
+                        .as_chunks::<8>().0.iter()
                         .map(|c| {
                             i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                         })
@@ -98,21 +98,21 @@ impl TensorData {
                 }
                 x if x == TensorProto_DataType::Int32 as i32 => {
                     let values = raw_data
-                        .chunks_exact(4)
+                        .as_chunks::<4>().0.iter()
                         .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                         .collect();
                     Ok(TensorData::Int32(values))
                 }
                 x if x == TensorProto_DataType::Float as i32 => {
                     let values = raw_data
-                        .chunks_exact(4)
+                        .as_chunks::<4>().0.iter()
                         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                         .collect();
                     Ok(TensorData::Float32(values))
                 }
                 x if x == TensorProto_DataType::Double as i32 => {
                     let values = raw_data
-                        .chunks_exact(8)
+                        .as_chunks::<8>().0.iter()
                         .map(|c| {
                             f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                         })
@@ -165,16 +165,16 @@ impl TensorData {
             }
             match data_type {
                 x if x == TensorProto_DataType::Int64 as i32 => {
-                    Ok(TensorData::Int64(tensor.int64_data.as_slice().to_vec()))
+                    Ok(TensorData::Int64(tensor.int64_data.to_vec()))
                 }
                 x if x == TensorProto_DataType::Int32 as i32 => {
-                    Ok(TensorData::Int32(tensor.int32_data.as_slice().to_vec()))
+                    Ok(TensorData::Int32(tensor.int32_data.to_vec()))
                 }
                 x if x == TensorProto_DataType::Float as i32 => {
-                    Ok(TensorData::Float32(tensor.float_data.as_slice().to_vec()))
+                    Ok(TensorData::Float32(tensor.float_data.to_vec()))
                 }
                 x if x == TensorProto_DataType::Double as i32 => {
-                    Ok(TensorData::Float64(tensor.double_data.as_slice().to_vec()))
+                    Ok(TensorData::Float64(tensor.double_data.to_vec()))
                 }
                 _ => Err(OnnxError::TypeConversion(
                     webnn_onnx_utils::error::ConversionError::UnsupportedOnnxDataType(data_type),
@@ -196,7 +196,7 @@ impl ConstantTensor {
     /// Create a ConstantTensor from a TensorProto
     pub fn from_tensor_proto(tensor: &TensorProto) -> Result<Self, OnnxError> {
         let data = TensorData::from_tensor_proto(tensor)?;
-        let shape = tensor.dims.as_slice().to_vec();
+        let shape = tensor.dims.to_vec();
         let data_type = tensor.data_type;
 
         Ok(ConstantTensor {
@@ -243,11 +243,11 @@ impl<'a> ConstantFoldingContext<'a> {
 
         for (name, tensor) in initializers.iter() {
             // Only add tensors with data
-            if !tensor.raw_data.as_slice().is_empty()
-                || !tensor.int64_data.as_slice().is_empty()
-                || !tensor.int32_data.as_slice().is_empty()
-                || !tensor.float_data.as_slice().is_empty()
-                || !tensor.double_data.as_slice().is_empty()
+            if !tensor.raw_data.is_empty()
+                || !tensor.int64_data.is_empty()
+                || !tensor.int32_data.is_empty()
+                || !tensor.float_data.is_empty()
+                || !tensor.double_data.is_empty()
             {
                 match ConstantTensor::from_tensor_proto(tensor) {
                     Ok(ct) => {
@@ -326,7 +326,7 @@ fn identify_constant_nodes(
     let graph = model.graph.as_ref().unwrap();
     let mut constant_nodes = Vec::new();
 
-    for (idx, node) in graph.node.as_slice().iter().enumerate() {
+    for (idx, node) in graph.node.iter().enumerate() {
         // Check if any evaluator can handle this node
         let can_evaluate = evaluators.iter().any(|e| e.can_evaluate(node, ctx));
 
@@ -359,7 +359,7 @@ fn evaluate_constant_nodes(
                 Ok(output_tensors) => {
                     // Add outputs as new initializers
                     for (i, tensor) in output_tensors.iter().enumerate() {
-                        if i < node.output.as_slice().len() {
+                        if i < node.output.len() {
                             let output_name = &node.output.as_slice()[i];
                             let proto = tensor.to_tensor_proto(output_name);
                             result.new_initializers.push(proto.clone());
@@ -409,7 +409,6 @@ pub fn fold_constants_in_model(
             .as_ref()
             .unwrap()
             .initializer
-            .as_slice()
             .iter()
             .map(|init| (init.name.as_str().to_string(), init))
             .collect();
@@ -437,7 +436,7 @@ pub fn fold_constants_in_model(
         }
 
         // 5. Remove evaluated nodes
-        let nodes = graph_mut.node.as_slice().to_vec();
+        let nodes = graph_mut.node.to_vec();
         graph_mut.node.clear();
         for (idx, node) in nodes.into_iter().enumerate() {
             if !result.nodes_to_remove.contains(&idx) {

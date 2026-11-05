@@ -39,7 +39,7 @@ impl EvaluatorTrait for UnsqueezeEvaluator {
         }
 
         // Input must be constant
-        if let Some(input) = node.input.as_slice().first() {
+        if let Some(input) = node.input.first() {
             return ctx.is_constant(input.as_str());
         }
 
@@ -53,7 +53,6 @@ impl EvaluatorTrait for UnsqueezeEvaluator {
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
         let input_name =
             node.input
-                .as_slice()
                 .first()
                 .ok_or_else(|| OnnxError::MissingAttribute {
                     attr: "input".to_string(),
@@ -67,7 +66,6 @@ impl EvaluatorTrait for UnsqueezeEvaluator {
         // Get axes attribute
         let mut axes: Vec<i64> = node
             .attribute
-            .as_slice()
             .iter()
             .find(|a| a.name.as_str() == "axes")
             .map(|a| a.ints.clone())
@@ -121,7 +119,7 @@ impl EvaluatorTrait for SqueezeEvaluator {
         }
 
         // Input must be constant
-        if let Some(input) = node.input.as_slice().first() {
+        if let Some(input) = node.input.first() {
             return ctx.is_constant(input.as_str());
         }
 
@@ -135,7 +133,6 @@ impl EvaluatorTrait for SqueezeEvaluator {
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
         let input_name =
             node.input
-                .as_slice()
                 .first()
                 .ok_or_else(|| OnnxError::MissingAttribute {
                     attr: "input".to_string(),
@@ -149,7 +146,6 @@ impl EvaluatorTrait for SqueezeEvaluator {
         // Get axes attribute (if not specified, squeeze all dimensions of size 1)
         let axes: Vec<i64> = node
             .attribute
-            .as_slice()
             .iter()
             .find(|a| a.name.as_str() == "axes")
             .map(|a| a.ints.clone())
@@ -280,7 +276,7 @@ impl EvaluatorTrait for CastEvaluator {
         }
 
         // Input must be constant
-        if let Some(input) = node.input.as_slice().first() {
+        if let Some(input) = node.input.first() {
             return ctx.is_constant(input.as_str());
         }
 
@@ -294,7 +290,6 @@ impl EvaluatorTrait for CastEvaluator {
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
         let input_name =
             node.input
-                .as_slice()
                 .first()
                 .ok_or_else(|| OnnxError::MissingAttribute {
                     attr: "input".to_string(),
@@ -308,7 +303,6 @@ impl EvaluatorTrait for CastEvaluator {
         // Get 'to' attribute (target type)
         let target_type_i32 = node
             .attribute
-            .as_slice()
             .iter()
             .find(|a| a.name.as_str() == "to" && a.i != 0)
             .map(|a| a.i as i32)

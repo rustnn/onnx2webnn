@@ -38,13 +38,12 @@ impl EvaluatorTrait for RangeEvaluator {
         }
 
         // Range requires 3 constant inputs: start, limit (end), delta (step)
-        if node.input.as_slice().len() != 3 {
+        if node.input.len() != 3 {
             return false;
         }
 
         // All inputs must be constants
         node.input
-            .as_slice()
             .iter()
             .all(|inp| ctx.is_constant(inp.as_str()))
     }
@@ -54,7 +53,7 @@ impl EvaluatorTrait for RangeEvaluator {
         node: &NodeProto,
         ctx: &ConstantFoldingContext,
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
-        if node.input.as_slice().len() != 3 {
+        if node.input.len() != 3 {
             return Err(OnnxError::MissingAttribute {
                 attr: "inputs (need 3: start, limit, delta)".to_string(),
                 op: "Range".to_string(),

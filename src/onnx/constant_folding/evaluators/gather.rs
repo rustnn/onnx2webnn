@@ -255,7 +255,6 @@ impl EvaluatorTrait for GatherEvaluator {
         // Get axis attribute (default 0)
         let axis = node
             .attribute
-            .as_slice()
             .iter()
             .find(|a| a.name.as_str() == "axis")
             .map(|a| a.i)

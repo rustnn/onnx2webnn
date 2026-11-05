@@ -98,7 +98,7 @@ impl OpHandler for ComparisonHandler {
         record_output(b, node, &output_name, out);
 
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             result
                 .output_types
                 .insert(output.to_string(), DataType::Uint8);
@@ -109,7 +109,7 @@ impl OpHandler for ComparisonHandler {
 }
 
 fn output_name_for(node: &NodeProto, node_name: &str) -> String {
-    if node.output.as_slice().is_empty() {
+    if node.output.is_empty() {
         format!("{}_output", node_name)
     } else {
         sanitize_identifier(&node.output.as_slice()[0].to_string())
@@ -122,7 +122,7 @@ fn record_output(
     output_name: &str,
     out: MLOperand,
 ) {
-    if let Some(output) = node.output.as_slice().first() {
+    if let Some(output) = node.output.first() {
         b.record_operand(&[output.as_str(), output_name], out);
     } else {
         b.record_operand(&[output_name], out);

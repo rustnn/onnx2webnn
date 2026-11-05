@@ -213,7 +213,6 @@ impl EvaluatorTrait for ConcatEvaluator {
 
         // All inputs must be constants
         node.input
-            .as_slice()
             .iter()
             .all(|input| ctx.is_constant(input.as_str()))
     }
@@ -234,7 +233,6 @@ impl EvaluatorTrait for ConcatEvaluator {
         // Get axis attribute (required for Concat)
         let axis = node
             .attribute
-            .as_slice()
             .iter()
             .find(|a| a.name.as_str() == "axis")
             .map(|a| a.i)

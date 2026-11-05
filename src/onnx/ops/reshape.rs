@@ -161,7 +161,6 @@ impl ReshapeHandler {
     ) -> Result<Vec<i64>, OnnxError> {
         if let Some(attr_axes) = node
             .attribute
-            .as_slice()
             .iter()
             .find(|a| a.name.as_str() == "axes")
             .map(|a| a.ints.clone())
@@ -173,7 +172,7 @@ impl ReshapeHandler {
             });
         }
 
-        if node.input.as_slice().len() >= 2 {
+        if node.input.len() >= 2 {
             let name = node.input.as_slice()[1].to_string();
             if let Some(vals) = context.const_values.get(&name) {
                 return Ok(if vals.is_empty() {
@@ -186,7 +185,7 @@ impl ReshapeHandler {
                 let raw = t.raw_data.as_slice();
                 if !raw.is_empty() {
                     let mut axes: Vec<i64> = raw
-                        .chunks_exact(8)
+                        .as_chunks::<8>().0.iter()
                         .map(|c| {
                             i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                         })
@@ -195,15 +194,15 @@ impl ReshapeHandler {
                         axes.push(0);
                     }
                     return Ok(axes);
-                } else if !t.int64_data.as_slice().is_empty() {
-                    let mut axes = t.int64_data.as_slice().to_vec();
+                } else if !t.int64_data.is_empty() {
+                    let mut axes = t.int64_data.to_vec();
                     if axes.is_empty() {
                         axes.push(0);
                     }
                     return Ok(axes);
-                } else if !t.int32_data.as_slice().is_empty() {
+                } else if !t.int32_data.is_empty() {
                     let mut axes: Vec<i64> =
-                        t.int32_data.as_slice().iter().map(|&v| v as i64).collect();
+                        t.int32_data.iter().map(|&v| v as i64).collect();
                     if axes.is_empty() {
                         axes.push(0);
                     }
@@ -251,13 +250,13 @@ impl ReshapeHandler {
                 if !raw_data.is_empty() {
                     match initializer.data_type {
                         x if x == TensorProto_DataType::Int32 as i32 => raw_data
-                            .chunks_exact(4)
+                            .as_chunks::<4>().0.iter()
                             .map(|chunk| {
                                 i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as i64
                             })
                             .collect(),
                         _ => raw_data
-                            .chunks_exact(8)
+                            .as_chunks::<8>().0.iter()
                             .map(|chunk| {
                                 i64::from_le_bytes([
                                     chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
@@ -266,12 +265,11 @@ impl ReshapeHandler {
                             })
                             .collect(),
                     }
-                } else if !initializer.int64_data.as_slice().is_empty() {
-                    initializer.int64_data.as_slice().to_vec()
-                } else if !initializer.int32_data.as_slice().is_empty() {
+                } else if !initializer.int64_data.is_empty() {
+                    initializer.int64_data.to_vec()
+                } else if !initializer.int32_data.is_empty() {
                     initializer
                         .int32_data
-                        .as_slice()
                         .iter()
                         .map(|&v| v as i64)
                         .collect()
@@ -285,7 +283,7 @@ impl ReshapeHandler {
 
         // Fallback: derive shape from known output/shape-input metadata when the shape tensor isn't const.
         if shape_values.is_empty() {
-            if let Some(out) = node.output.as_slice().first() {
+            if let Some(out) = node.output.first() {
                 if let Some(output_dims) =
                     value_shape_dims_for(out.as_str(), context.value_shape_dims)
                 {
@@ -321,7 +319,7 @@ impl ReshapeHandler {
                 }
             }
 
-            if let Some(out_name) = node.output.as_slice().first() {
+            if let Some(out_name) = node.output.first() {
                 let out_s = out_name.to_string();
                 let known_output_shape = context
                     .value_shapes
@@ -389,7 +387,6 @@ impl ReshapeHandler {
         // dimension (unless allowzero=1, where it is a literal zero).
         let allowzero = node
             .attribute
-            .as_slice()
             .iter()
             .any(|a| a.name.as_str() == "allowzero" && a.i != 0);
         let shape_values: Vec<i64> = if !allowzero && shape_values.contains(&0) {
@@ -550,7 +547,6 @@ impl ReshapeHandler {
 
         let new_shape = node
             .output
-            .as_slice()
             .first()
             .and_then(|out| {
                 let out_s = out.to_string();
@@ -643,13 +639,13 @@ impl ReshapeHandler {
             if !raw_data.is_empty() {
                 match initializer.data_type {
                     x if x == TensorProto_DataType::Int32 as i32 => raw_data
-                        .chunks_exact(4)
+                        .as_chunks::<4>().0.iter()
                         .map(|chunk| {
                             i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as i64
                         })
                         .collect(),
                     _ => raw_data
-                        .chunks_exact(8)
+                        .as_chunks::<8>().0.iter()
                         .map(|chunk| {
                             i64::from_le_bytes([
                                 chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
@@ -658,12 +654,11 @@ impl ReshapeHandler {
                         })
                         .collect(),
                 }
-            } else if !initializer.int64_data.as_slice().is_empty() {
-                initializer.int64_data.as_slice().to_vec()
-            } else if !initializer.int32_data.as_slice().is_empty() {
+            } else if !initializer.int64_data.is_empty() {
+                initializer.int64_data.to_vec()
+            } else if !initializer.int32_data.is_empty() {
                 initializer
                     .int32_data
-                    .as_slice()
                     .iter()
                     .map(|&v| v as i64)
                     .collect()
@@ -688,7 +683,6 @@ impl ReshapeHandler {
 
         let output_dim_shape = node
             .output
-            .as_slice()
             .first()
             .and_then(|out| {
                 let out_s = out.to_string();
@@ -717,7 +711,6 @@ impl ReshapeHandler {
         let shape_values: Vec<i64> = if shape_values.is_empty() {
             let output_shape_opt = node
                 .output
-                .as_slice()
                 .first()
                 .and_then(|out| {
                     let out_s = out.to_string();
@@ -1475,13 +1468,13 @@ impl ReshapeHandler {
             if !raw.is_empty() {
                 match tensor.data_type {
                     x if x == TensorProto_DataType::Int64 as i32 => raw
-                        .chunks_exact(8)
+                        .as_chunks::<8>().0.iter()
                         .map(|c| {
                             i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                         })
                         .collect(),
                     x if x == TensorProto_DataType::Int32 as i32 => raw
-                        .chunks_exact(4)
+                        .as_chunks::<4>().0.iter()
                         .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                         .collect(),
                     _ => {
@@ -1490,12 +1483,11 @@ impl ReshapeHandler {
                         ))
                     }
                 }
-            } else if !tensor.int64_data.as_slice().is_empty() {
-                tensor.int64_data.as_slice().to_vec()
-            } else if !tensor.int32_data.as_slice().is_empty() {
+            } else if !tensor.int64_data.is_empty() {
+                tensor.int64_data.to_vec()
+            } else if !tensor.int32_data.is_empty() {
                 tensor
                     .int32_data
-                    .as_slice()
                     .iter()
                     .map(|&v| v as i64)
                     .collect()

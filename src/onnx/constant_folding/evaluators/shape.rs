@@ -39,7 +39,7 @@ impl EvaluatorTrait for ShapeEvaluator {
 
         // Shape operation requires that we know the input's shape
         // The input doesn't need to be a constant, but we need its shape metadata
-        if let Some(input_name) = node.input.as_slice().first() {
+        if let Some(input_name) = node.input.first() {
             // Check if we have this as a constant (which includes shape info)
             if ctx.is_constant(input_name.as_str()) {
                 return true;
@@ -56,7 +56,6 @@ impl EvaluatorTrait for ShapeEvaluator {
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
         let input_name =
             node.input
-                .as_slice()
                 .first()
                 .ok_or_else(|| OnnxError::MissingAttribute {
                     attr: "input".to_string(),

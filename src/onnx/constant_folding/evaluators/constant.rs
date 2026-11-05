@@ -39,7 +39,6 @@ impl EvaluatorTrait for ConstantEvaluator {
 
         // Check if node has a 'value' attribute with tensor data
         node.attribute
-            .as_slice()
             .iter()
             .any(|a| a.name.as_str() == "value" && a.t.is_some())
     }
@@ -51,7 +50,6 @@ impl EvaluatorTrait for ConstantEvaluator {
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
         let value_attr = node
             .attribute
-            .as_slice()
             .iter()
             .find(|a| a.name.as_str() == "value" && a.t.is_some())
             .ok_or_else(|| OnnxError::MissingAttribute {

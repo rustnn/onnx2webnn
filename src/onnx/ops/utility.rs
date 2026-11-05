@@ -145,7 +145,6 @@ impl UtilityHandler {
             }
         } else if node
             .attribute
-            .as_slice()
             .iter()
             .any(|a| matches!(a.name.as_str(), "start" | "end"))
         {
@@ -153,7 +152,7 @@ impl UtilityHandler {
                 "Shape node {node_name} has start/end attributes but input rank is unknown"
             )));
         }
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         Ok(ConversionResult::default())
@@ -237,7 +236,6 @@ impl UtilityHandler {
         let out_rank = indices_shape.len() as i64 + 1;
         let mut axis = node
             .attribute
-            .as_slice()
             .iter()
             .find(|a| a.name.as_str() == "axis")
             .map(|a| a.i)
@@ -332,11 +330,11 @@ impl UtilityHandler {
             .builder
             .where_with_options(hit, on, off, OnnxBuilder::labeled_options(&label))
             .map_err(map_op_error)?;
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &label, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             result.output_types.insert(output.to_string(), value_dtype);
         }
         Ok(result)
@@ -430,10 +428,10 @@ impl UtilityHandler {
                         raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
                     ]));
                 }
-            } else if !t.int64_data.as_slice().is_empty() {
-                return t.int64_data.as_slice().first().copied();
-            } else if !t.int32_data.as_slice().is_empty() {
-                return t.int32_data.as_slice().first().map(|v| *v as i64);
+            } else if !t.int64_data.is_empty() {
+                return t.int64_data.first().copied();
+            } else if !t.int32_data.is_empty() {
+                return t.int32_data.first().map(|v| *v as i64);
             }
         }
         None
@@ -459,7 +457,7 @@ impl UtilityHandler {
             )));
         }
 
-        let output_name = if node.output.as_slice().is_empty() {
+        let output_name = if node.output.is_empty() {
             format!("{}_output", node_name)
         } else {
             sanitize_identifier(&node.output.as_slice()[0].to_string())
@@ -554,11 +552,11 @@ impl UtilityHandler {
             } else {
                 sliced
             };
-            if let Some(out_name) = node.output.as_slice().first() {
+            if let Some(out_name) = node.output.first() {
                 record_node_output(b, out_name, &output_name, out);
             }
             let mut result = ConversionResult::default();
-            if let Some(out) = node.output.as_slice().first() {
+            if let Some(out) = node.output.first() {
                 result.output_types.insert(out.to_string(), DataType::Int64);
             }
             return Ok(result);
@@ -618,11 +616,11 @@ impl UtilityHandler {
             &[values.len() as u32],
             bytes,
         )?;
-        if let Some(out) = node.output.as_slice().first() {
+        if let Some(out) = node.output.first() {
             record_node_output(b, out, &output_name, b.resolve_operand(&output_name)?);
         }
         let mut result = ConversionResult::default();
-        if let Some(out) = node.output.as_slice().first() {
+        if let Some(out) = node.output.first() {
             result.output_types.insert(out.to_string(), DataType::Int64);
         }
 
@@ -689,12 +687,12 @@ impl UtilityHandler {
             _ => values.iter().flat_map(|v| v.to_le_bytes()).collect(),
         };
         b.register_constant_from_bytes(output_name, dtype, &[values.len() as u32], bytes)?;
-        if let Some(out) = node.output.as_slice().first() {
+        if let Some(out) = node.output.first() {
             record_node_output(b, out, output_name, b.resolve_operand(output_name)?);
         }
 
         let mut result = ConversionResult::default();
-        if let Some(out) = node.output.as_slice().first() {
+        if let Some(out) = node.output.first() {
             result.output_types.insert(out.to_string(), dtype);
         }
         Ok(result)
@@ -751,11 +749,11 @@ impl UtilityHandler {
             .builder
             .triangular_with_options(input, opts)
             .map_err(map_op_error)?;
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
                 result.output_types.insert(output.to_string(), *dtype);
             }
@@ -992,11 +990,11 @@ impl UtilityHandler {
             .builder
             .dequantize_linear_with_zeropoint(q_rows, scale_rows, zp_rows)
             .map_err(map_op_error)?;
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             result.output_types.insert(output.to_string(), scales_dtype);
         }
         Ok(result)
@@ -1010,7 +1008,7 @@ impl UtilityHandler {
         context: &ConversionContext,
         b: &mut OnnxBuilder<'_, '_, '_>,
     ) -> Result<ConversionResult, OnnxError> {
-        let output_name = if node.output.as_slice().is_empty() {
+        let output_name = if node.output.is_empty() {
             format!("{}_output", node_name)
         } else {
             sanitize_identifier(&node.output.as_slice()[0].to_string())
@@ -1018,7 +1016,6 @@ impl UtilityHandler {
 
         let output_dim_shape = node
             .output
-            .as_slice()
             .first()
             .and_then(|out| {
                 let out_s = out.to_string();
@@ -1032,7 +1029,7 @@ impl UtilityHandler {
 
         // Determine the target shape: prefer inferred output shape, otherwise try the shape input const.
         let mut shape: Option<Vec<i64>> = None;
-        if let Some(out) = node.output.as_slice().first() {
+        if let Some(out) = node.output.first() {
             if let Some(s) = context.value_shapes.get(out) {
                 shape = Some(s.clone());
             } else {
@@ -1043,7 +1040,7 @@ impl UtilityHandler {
             }
         }
         if shape.is_none() {
-            if let Some(shape_input) = node.input.as_slice().first() {
+            if let Some(shape_input) = node.input.first() {
                 if let Some(vals) = context.const_values.get(shape_input) {
                     shape = Some(vals.clone());
                 } else if let Some(len_shape) = context.value_shapes.get(shape_input) {
@@ -1066,10 +1063,10 @@ impl UtilityHandler {
                         // FLOAT
                         x if x == crate::protos::onnx::TensorProto_DataType::Float as i32 => {
                             dtype = DataType::Float32;
-                            if !t.float_data.as_slice().is_empty() {
+                            if !t.float_data.is_empty() {
                                 fill_value_i64 = t.float_data.as_slice()[0].to_bits() as i64;
-                            } else if !t.raw_data.as_slice().is_empty()
-                                && t.raw_data.as_slice().len() >= 4
+                            } else if !t.raw_data.is_empty()
+                                && t.raw_data.len() >= 4
                             {
                                 let raw = &t.raw_data.as_slice()[..4];
                                 let bits = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
@@ -1080,10 +1077,10 @@ impl UtilityHandler {
                         }
                         x if x == crate::protos::onnx::TensorProto_DataType::Float16 as i32 => {
                             dtype = DataType::Float16;
-                            if !t.int32_data.as_slice().is_empty() {
+                            if !t.int32_data.is_empty() {
                                 fill_value_i64 = t.int32_data.as_slice()[0] as i64;
-                            } else if !t.raw_data.as_slice().is_empty()
-                                && t.raw_data.as_slice().len() >= 2
+                            } else if !t.raw_data.is_empty()
+                                && t.raw_data.len() >= 2
                             {
                                 let raw = &t.raw_data.as_slice()[..2];
                                 fill_value_i64 = u16::from_le_bytes([raw[0], raw[1]]) as i64;
@@ -1094,10 +1091,10 @@ impl UtilityHandler {
                         // INT64
                         x if x == crate::protos::onnx::TensorProto_DataType::Int64 as i32 => {
                             dtype = DataType::Int64;
-                            if !t.int64_data.as_slice().is_empty() {
+                            if !t.int64_data.is_empty() {
                                 fill_value_i64 = t.int64_data.as_slice()[0];
-                            } else if !t.raw_data.as_slice().is_empty()
-                                && t.raw_data.as_slice().len() >= 8
+                            } else if !t.raw_data.is_empty()
+                                && t.raw_data.len() >= 8
                             {
                                 let raw = &t.raw_data.as_slice()[..8];
                                 fill_value_i64 = i64::from_le_bytes([
@@ -1128,11 +1125,11 @@ impl UtilityHandler {
 
             let scalar = b.resolve_operand(&scalar_name)?;
             let out = expand_with_shape(b, scalar, &output_name, ast_dims_to_mldim(dims))?;
-            if let Some(out_name) = node.output.as_slice().first() {
+            if let Some(out_name) = node.output.first() {
                 record_node_output(b, out_name, &output_name, out);
             }
             let mut result = ConversionResult::default();
-            if let Some(out) = node.output.as_slice().first() {
+            if let Some(out) = node.output.first() {
                 result.output_types.insert(out.to_string(), dtype);
             }
             return Ok(result);
@@ -1145,7 +1142,7 @@ impl UtilityHandler {
             // as Concat drop empty optional operands.
             let output_name = output_label(node, node_name);
             b.mark_empty_optional(&output_name);
-            if let Some(out) = node.output.as_slice().first() {
+            if let Some(out) = node.output.first() {
                 b.mark_empty_optional(out);
             }
             return Ok(ConversionResult::default());
@@ -1183,11 +1180,11 @@ impl UtilityHandler {
             &shape.iter().map(|d| *d as u32).collect::<Vec<_>>(),
             bytes,
         )?;
-        if let Some(out) = node.output.as_slice().first() {
+        if let Some(out) = node.output.first() {
             record_node_output(b, out, &output_name, b.resolve_operand(&output_name)?);
         }
         let mut result = ConversionResult::default();
-        if let Some(out) = node.output.as_slice().first() {
+        if let Some(out) = node.output.first() {
             result.output_types.insert(out.to_string(), dtype);
         }
 
@@ -1235,11 +1232,11 @@ impl UtilityHandler {
             .builder
             .gather_with_options(data, indices, opts)
             .map_err(map_op_error)?;
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
                 result.output_types.insert(output.to_string(), *dtype);
             }
@@ -1505,11 +1502,11 @@ impl UtilityHandler {
                 },
             )
             .map_err(map_op_error)?;
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             result.output_types.insert(output.to_string(), dtype);
         }
         Ok(result)
@@ -1541,11 +1538,11 @@ impl UtilityHandler {
             .builder
             .gather_nd_with_options(data, indices, opts)
             .map_err(map_op_error)?;
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
                 result.output_types.insert(output.to_string(), *dtype);
             }
@@ -1593,11 +1590,11 @@ impl UtilityHandler {
             .builder
             .gather_elements_with_options(data, indices, opts)
             .map_err(map_op_error)?;
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
                 result.output_types.insert(output.to_string(), *dtype);
             }
@@ -1650,11 +1647,11 @@ impl UtilityHandler {
             .builder
             .reverse_with_options(input, opts)
             .map_err(map_op_error)?;
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
                 result.output_types.insert(output.to_string(), *dtype);
             }
@@ -1693,22 +1690,22 @@ impl UtilityHandler {
                 if !raw.is_empty() {
                     if t.data_type == crate::protos::onnx::TensorProto_DataType::Int32 as i32 {
                         return Some(
-                            raw.chunks_exact(4)
+                            raw.as_chunks::<4>().0.iter()
                                 .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                                 .collect(),
                         );
                     }
                     return Some(
-                        raw.chunks_exact(8)
+                        raw.as_chunks::<8>().0.iter()
                             .map(|c| {
                                 i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                             })
                             .collect(),
                     );
-                } else if !t.int64_data.as_slice().is_empty() {
-                    return Some(t.int64_data.as_slice().to_vec());
-                } else if !t.int32_data.as_slice().is_empty() {
-                    return Some(t.int32_data.as_slice().iter().map(|&v| v as i64).collect());
+                } else if !t.int64_data.is_empty() {
+                    return Some(t.int64_data.to_vec());
+                } else if !t.int32_data.is_empty() {
+                    return Some(t.int32_data.iter().map(|&v| v as i64).collect());
                 }
             }
             None
@@ -2067,7 +2064,7 @@ impl UtilityHandler {
         // Propagate an empty placeholder so consumers such as Concat drop it.
         if sizes.iter().any(|d| d.static_or_max() == 0) {
             b.mark_empty_optional(&output_name);
-            if let Some(onnx_out) = node.output.as_slice().first() {
+            if let Some(onnx_out) = node.output.first() {
                 b.mark_empty_optional(onnx_out);
             }
             return Ok(ConversionResult::default());
@@ -2092,11 +2089,11 @@ impl UtilityHandler {
                 )
                 .map_err(map_op_error)?;
         }
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             record_node_output(b, output, &output_name, out);
         }
         let mut result = ConversionResult::default();
-        if let Some(output) = node.output.as_slice().first() {
+        if let Some(output) = node.output.first() {
             if let Some(dtype) = context.value_types.get(&inputs[0]) {
                 result.output_types.insert(output.to_string(), *dtype);
             }

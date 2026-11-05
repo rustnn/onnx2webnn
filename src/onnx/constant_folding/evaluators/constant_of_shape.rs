@@ -38,7 +38,7 @@ impl EvaluatorTrait for ConstantOfShapeEvaluator {
         }
 
         // ConstantOfShape requires the shape input to be a constant
-        if let Some(input_name) = node.input.as_slice().first() {
+        if let Some(input_name) = node.input.first() {
             return ctx.is_constant(input_name.as_str());
         }
 
@@ -52,7 +52,6 @@ impl EvaluatorTrait for ConstantOfShapeEvaluator {
     ) -> Result<Vec<ConstantTensor>, OnnxError> {
         let input_name =
             node.input
-                .as_slice()
                 .first()
                 .ok_or_else(|| OnnxError::MissingAttribute {
                     attr: "input (shape)".to_string(),
@@ -94,7 +93,7 @@ impl EvaluatorTrait for ConstantOfShapeEvaluator {
                                 fill_value_i64 = i64::from_le_bytes([
                                     raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
                                 ]);
-                            } else if !value_tensor.int64_data.as_slice().is_empty() {
+                            } else if !value_tensor.int64_data.is_empty() {
                                 fill_value_i64 = value_tensor.int64_data.as_slice()[0];
                             }
                         }
@@ -103,7 +102,7 @@ impl EvaluatorTrait for ConstantOfShapeEvaluator {
                             if !raw.is_empty() && raw.len() >= 4 {
                                 fill_value_f32 =
                                     f32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
-                            } else if !value_tensor.float_data.as_slice().is_empty() {
+                            } else if !value_tensor.float_data.is_empty() {
                                 fill_value_f32 = value_tensor.float_data.as_slice()[0];
                             }
                         }

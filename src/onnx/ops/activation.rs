@@ -962,7 +962,7 @@ fn input_data_type(context: &ConversionContext, input: &str) -> DataType {
 }
 
 fn output_name_for(node: &NodeProto, node_name: &str) -> String {
-    if node.output.as_slice().is_empty() {
+    if node.output.is_empty() {
         format!("{}_output", node_name)
     } else {
         sanitize_identifier(&node.output.as_slice()[0].to_string())
@@ -975,7 +975,7 @@ fn record_output(
     output_name: &str,
     out: MLOperand,
 ) {
-    if let Some(output) = node.output.as_slice().first() {
+    if let Some(output) = node.output.first() {
         b.record_operand(&[output.as_str(), output_name], out);
     } else {
         b.record_operand(&[output_name], out);
@@ -984,7 +984,6 @@ fn record_output(
 
 fn attr_f64(node: &NodeProto, name: &str) -> Option<f64> {
     node.attribute
-        .as_slice()
         .iter()
         .find(|a| a.name == name)
         .map(|a| a.f as f64)

@@ -489,10 +489,10 @@ impl OnnxConverter {
 
         // Print basic info
         println!("Model name: {graph_name}");
-        println!("Inputs: {}", graph.input.as_slice().len());
-        println!("Outputs: {}", graph.output.as_slice().len());
-        println!("Nodes: {}", graph.node.as_slice().len());
-        println!("Initializers: {}", graph.initializer.as_slice().len());
+        println!("Inputs: {}", graph.input.len());
+        println!("Outputs: {}", graph.output.len());
+        println!("Nodes: {}", graph.node.len());
+        println!("Initializers: {}", graph.initializer.len());
 
         Ok(())
     }
@@ -595,7 +595,6 @@ impl OnnxConverter {
         // Process inputs (exclude initializers)
         let initializer_names: HashSet<String> = onnx_graph
             .initializer
-            .as_slice()
             .iter()
             .map(|init| init.name.as_str().to_string())
             .collect();
@@ -767,10 +766,10 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
 
             // Skip initializers with no data (check both raw_data and typed data fields)
             let has_data = !raw_data.is_empty()
-                || !initializer.float_data.as_slice().is_empty()
-                || !initializer.int32_data.as_slice().is_empty()
-                || !initializer.int64_data.as_slice().is_empty()
-                || !initializer.double_data.as_slice().is_empty();
+                || !initializer.float_data.is_empty()
+                || !initializer.int32_data.is_empty()
+                || !initializer.int64_data.is_empty()
+                || !initializer.double_data.is_empty();
 
             // Zero-element tensors are optional-input placeholders (often produced when
             // empty Constant nodes are folded into initializers). Track them so Cast/Resize
@@ -789,7 +788,6 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
             let data_type = map_onnx_data_type(onnx_type)?;
             let shape: Vec<u32> = initializer
                 .dims
-                .as_slice()
                 .iter()
                 .map(|d| *d as u32)
                 .collect();
@@ -810,11 +808,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
         let mut initializers_map = std::collections::HashMap::new();
         for initializer in onnx_graph.initializer.as_slice() {
             // Skip initializers with no data (check both raw_data and typed data fields)
-            let has_data = !initializer.raw_data.as_slice().is_empty()
-                || !initializer.float_data.as_slice().is_empty()
-                || !initializer.int32_data.as_slice().is_empty()
-                || !initializer.int64_data.as_slice().is_empty()
-                || !initializer.double_data.as_slice().is_empty();
+            let has_data = !initializer.raw_data.is_empty()
+                || !initializer.float_data.is_empty()
+                || !initializer.int32_data.is_empty()
+                || !initializer.int64_data.is_empty()
+                || !initializer.double_data.is_empty();
 
             if !has_data {
                 continue;
@@ -833,7 +831,6 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
             }
             if let Some(input) = onnx_graph
                 .input
-                .as_slice()
                 .iter()
                 .find(|i| i.name.as_str() == raw_name)
             {
@@ -922,16 +919,16 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
         // Add initializer shapes
         for initializer in onnx_graph.initializer.as_slice() {
             // Skip initializers with no data (check both raw_data and typed data fields)
-            let has_data = !initializer.raw_data.as_slice().is_empty()
-                || !initializer.float_data.as_slice().is_empty()
-                || !initializer.int32_data.as_slice().is_empty()
-                || !initializer.int64_data.as_slice().is_empty()
-                || !initializer.double_data.as_slice().is_empty();
+            let has_data = !initializer.raw_data.is_empty()
+                || !initializer.float_data.is_empty()
+                || !initializer.int32_data.is_empty()
+                || !initializer.int64_data.is_empty()
+                || !initializer.double_data.is_empty();
 
             if !has_data {
                 continue;
             }
-            let shape: Vec<i64> = initializer.dims.as_slice().to_vec();
+            let shape: Vec<i64> = initializer.dims.to_vec();
             value_shapes.insert(initializer.name.as_str().to_string(), shape);
             let dims: Vec<rustnn::graph::Dimension> = initializer
                 .dims
@@ -1042,22 +1039,21 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                 let raw = initializer.raw_data.as_slice();
                 let values = if !raw.is_empty() {
                     if initializer.data_type == TensorProto_DataType::Int32 as i32 {
-                        raw.chunks_exact(4)
+                        raw.as_chunks::<4>().0.iter()
                             .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                             .collect()
                     } else {
-                        raw.chunks_exact(8)
+                        raw.as_chunks::<8>().0.iter()
                             .map(|c| {
                                 i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
                             })
                             .collect()
                     }
-                } else if !initializer.int64_data.as_slice().is_empty() {
-                    initializer.int64_data.as_slice().to_vec()
-                } else if !initializer.int32_data.as_slice().is_empty() {
+                } else if !initializer.int64_data.is_empty() {
+                    initializer.int64_data.to_vec()
+                } else if !initializer.int32_data.is_empty() {
                     initializer
                         .int32_data
-                        .as_slice()
                         .iter()
                         .map(|&v| v as i64)
                         .collect()
@@ -1075,7 +1071,6 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
             if node.op_type.as_str() == "Constant" {
                 if let Some(attr) = node
                     .attribute
-                    .as_slice()
                     .iter()
                     .find(|a| a.name.as_str() == "value" && a.t.is_some())
                 {
@@ -1086,11 +1081,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                         let raw = tensor.raw_data.as_slice();
                         let values = if !raw.is_empty() {
                             if tensor.data_type == TensorProto_DataType::Int32 as i32 {
-                                raw.chunks_exact(4)
+                                raw.as_chunks::<4>().0.iter()
                                     .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64)
                                     .collect()
                             } else {
-                                raw.chunks_exact(8)
+                                raw.as_chunks::<8>().0.iter()
                                     .map(|c| {
                                         i64::from_le_bytes([
                                             c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7],
@@ -1098,12 +1093,11 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                                     })
                                     .collect()
                             }
-                        } else if !tensor.int64_data.as_slice().is_empty() {
-                            tensor.int64_data.as_slice().to_vec()
-                        } else if !tensor.int32_data.as_slice().is_empty() {
+                        } else if !tensor.int64_data.is_empty() {
+                            tensor.int64_data.to_vec()
+                        } else if !tensor.int32_data.is_empty() {
                             tensor
                                 .int32_data
-                                .as_slice()
                                 .iter()
                                 .map(|&v| v as i64)
                                 .collect()
@@ -1111,7 +1105,7 @@ Provide --override-dim {}=<value> or enable --experimental-dynamic-inputs.",
                             Vec::new()
                         };
 
-                        if let Some(out) = node.output.as_slice().first() {
+                        if let Some(out) = node.output.first() {
                             if !values.is_empty() {
                                 const_values.insert(out.to_string(), values);
                                 value_types.insert(out.to_string(), DataType::Int64);
@@ -2039,7 +2033,7 @@ fn convert_model_with_backend(
     backend: Backend,
 ) -> Result<ValidatedGraph<'static>, OnnxError> {
     let opts = default_backend_context_options().with_rustnn_backend_hint(backend);
-    convert_model_with_context_options(model, options, opts, &backend.as_ref())
+    convert_model_with_context_options(model, options, opts, backend.as_ref())
 }
 
 fn convert_model_with_context_options(

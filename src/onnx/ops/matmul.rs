@@ -74,12 +74,12 @@ pub(crate) fn decode_float_tensor_as_f32(
     let bytes = tensor_proto_to_bytes(tensor)?;
     if tensor.data_type == TensorProto_DataType::Float as i32 {
         Ok(bytes
-            .chunks_exact(4)
+            .as_chunks::<4>().0.iter()
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
             .collect())
     } else if tensor.data_type == TensorProto_DataType::Float16 as i32 {
         Ok(bytes
-            .chunks_exact(2)
+            .as_chunks::<2>().0.iter()
             .map(|c| half::f16::from_bits(u16::from_le_bytes([c[0], c[1]])).to_f32())
             .collect())
     } else {
@@ -247,7 +247,6 @@ impl MatMulHandler {
         let label = output_label(node, node_name);
         let a_name = node
             .input
-            .as_slice()
             .first()
             .map(|s| s.as_str())
             .unwrap_or("");
@@ -640,7 +639,7 @@ impl MatMulHandler {
         // derivation) see an unambiguous axis.
         let zp_tensor = match zero_point_name {
             Some(name) => match context.initializers.get(name) {
-                Some(t) if map_onnx_data_type(t.data_type).ok() == Some(zp_dtype.clone()) => {
+                Some(t) if map_onnx_data_type(t.data_type).ok() == Some(zp_dtype) => {
                     Some(*t)
                 }
                 _ => return Ok(None),
@@ -674,8 +673,7 @@ impl MatMulHandler {
         };
 
         let scale_name = format!("{label}_dq_scale");
-        let ones: Vec<u8> = std::iter::repeat(1.0f32.to_le_bytes())
-            .take(ones_len)
+        let ones: Vec<u8> = std::iter::repeat_n(1.0f32.to_le_bytes(), ones_len)
             .flatten()
             .collect();
         b.register_constant_from_bytes(&scale_name, DataType::Float32, &const_shape, ones)?;

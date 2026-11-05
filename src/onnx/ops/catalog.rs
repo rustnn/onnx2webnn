@@ -476,7 +476,7 @@ pub fn report_eliminated_source_nodes(
         "Eliminated source nodes (folding/specialization/pruning): {}",
         eliminated.len()
     );
-    let verbose = std::env::var_os("O2W_OPERATOR_REPORT_VERBOSE").is_some();
+    let verbose = log::log_enabled!(log::Level::Debug);
     let mut groups: BTreeMap<(&str, &str), (usize, &str)> = BTreeMap::new();
     for (name, op, domain, _) in &eliminated {
         let domain = if domain.is_empty() {

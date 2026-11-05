@@ -78,7 +78,7 @@ fn format_unsupported_ops_list(ops: &[UnsupportedOpEntry]) -> String {
 
 #[derive(Debug, Error)]
 pub enum OnnxError {
-    #[error("failed to read ONNX file: {0}")]
+    #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
     #[error("failed to parse ONNX protobuf: {0}")]

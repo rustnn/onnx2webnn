@@ -81,6 +81,9 @@ pub enum OnnxError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
+    #[error("Failed to resolve external tensor data: {source}")]
+    ExternalTensorDataError { source: Box<OnnxError> },
+
     #[error("failed to parse ONNX protobuf: {0}")]
     ProtobufError(String),
 
@@ -1711,7 +1714,8 @@ fn load_model_from_path(
         &mut model,
         onnx_path_ref,
         options.zero_fill_missing_external_data,
-    )?;
+    )
+    .map_err(|err| OnnxError::ExternalTensorDataError { source: err.into() })?;
 
     // Merge overrides from sidecar dims file if provided implicitly and not already set
     if options.free_dim_overrides.is_empty() {

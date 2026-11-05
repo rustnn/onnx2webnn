@@ -347,7 +347,7 @@ impl ReshapeHandler {
                 // targets built from Concat shape vectors (e.g. SmolLM attention).
                 shape_values = ds.clone();
                 if output_name.contains("layers_15_self_attn") && output_name.contains("Reshape") {
-                    crate::debug_println!(
+                    log::debug!(
                         "[RESHAPE FALLBACK] {} from input {:?} -> {:?}",
                         output_name,
                         ds,
@@ -366,7 +366,7 @@ impl ReshapeHandler {
             && output_name.contains("Reshape")
         {
             // Debug: track const-derived shapes for layer 15
-            crate::debug_println!(
+            log::debug!(
                 "[RESHAPE CONST] {} newShape from const -> {:?}",
                 output_name,
                 shape_values
@@ -459,7 +459,7 @@ impl ReshapeHandler {
                         // In those cases, prefer the existing best-effort fallback instead of
                         // failing conversion outright.
                         if total_elements > 0 {
-                            crate::debug_println!(
+                            log::debug!(
                                 "[reshape] cannot infer -1 for {} from input {:?} and target {:?}; replacing -1 with 1",
                                 data_input_raw,
                                 input_shape,
@@ -490,7 +490,7 @@ impl ReshapeHandler {
 
                 inferred_shape
             } else {
-                crate::debug_println!(
+                log::debug!(
                     "[reshape] missing input shape for {}, shape {:?}; replacing -1 with 1",
                     data_input_raw,
                     shape_values
@@ -524,7 +524,7 @@ impl ReshapeHandler {
                 }
 
                 let hidden = shape_values.last().copied().unwrap_or(1);
-                crate::debug_println!(
+                log::debug!(
                     "[reshape] repair: {} input_shape={:?} target_shape={:?} batch_hint={} seq_hint={} hidden={}",
                     output_name, input_shape, shape_values, batch_hint, seq_hint, hidden
                 );
@@ -541,7 +541,7 @@ impl ReshapeHandler {
 
         // Debug: final shape for layer 15
         if output_name.contains("layers_15_self_attn") && output_name.contains("Reshape") {
-            crate::debug_println!(
+            log::debug!(
                 "[RESHAPE FINAL] {} final newShape -> {:?}",
                 output_name,
                 shape_values
@@ -609,14 +609,14 @@ impl ReshapeHandler {
 
         // Debug logging for all Expand operations
         if shape_input_raw.contains("rotary") || data_input_raw.contains("rotary") {
-            crate::debug_println!("[EXPAND DEBUG] Node: {}", node_name);
-            crate::debug_println!("  data_input_raw: {}", data_input_raw);
-            crate::debug_println!("  shape_input_raw: {}", shape_input_raw);
-            crate::debug_println!(
+            log::debug!("[EXPAND DEBUG] Node: {}", node_name);
+            log::debug!("  data_input_raw: {}", data_input_raw);
+            log::debug!("  shape_input_raw: {}", shape_input_raw);
+            log::debug!(
                 "  In const_values: {}",
                 context.const_values.contains_key(&shape_input_raw)
             );
-            crate::debug_println!(
+            log::debug!(
                 "  In initializers: {}",
                 context.initializers.contains_key(shape_input_raw.as_str())
             );
@@ -632,12 +632,12 @@ impl ReshapeHandler {
             .or_else(|| context.const_values.get(&shape_key_trimmed))
         {
             if shape_input_raw.contains("rotary") || data_input_raw.contains("rotary") {
-                crate::debug_println!("  Shape from const_values: {:?}", values);
+                log::debug!("  Shape from const_values: {:?}", values);
             }
             values.clone()
         } else if let Some(initializer) = context.initializers.get(shape_input_raw.as_str()) {
             if shape_input_raw.contains("rotary") || data_input_raw.contains("rotary") {
-                crate::debug_println!("  Shape from initializer");
+                log::debug!("  Shape from initializer");
             }
             let raw_data = initializer.raw_data.as_slice();
             if !raw_data.is_empty() {
@@ -735,7 +735,7 @@ impl ReshapeHandler {
                         .any(|d| matches!(d, rustnn::graph::Dimension::Dynamic(_)))
                 });
                 if output_shape.iter().all(|&d| d > 0) && !has_dynamic_output_dim {
-                    crate::debug_println!(
+                    log::debug!(
                         "[expand] using inferred output shape for {}: {:?}",
                         node_name,
                         output_shape

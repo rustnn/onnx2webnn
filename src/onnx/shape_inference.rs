@@ -4101,7 +4101,7 @@ pub fn propagate_shapes_and_fold_constants(
                 }
 
                 if iteration == max_iterations - 1 {
-                    crate::debug_println!(
+                    log::debug!(
                         "Warning: Shape propagation reached max iterations ({}/{})",
                         value_shapes.len(),
                         graph.node.as_slice().len()

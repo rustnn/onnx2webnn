@@ -261,17 +261,15 @@ fn conversion_paths(input: &Path, output: Option<&Path>) -> anyhow::Result<(Path
 }
 
 fn main() -> anyhow::Result<()> {
-    pretty_env_logger::init();
-
     let cli = Cli::parse();
     let backend = cli.backend;
     if !matches!(cli.cmd, Command::OperatorCatalog) {
         std::env::set_var("O2W_OPERATOR_REPORT", "1");
     }
     if cli.debug {
-        onnx2webnn::debug::enable();
-        std::env::set_var("O2W_OPERATOR_REPORT_VERBOSE", "1");
+        std::env::set_var("RUST_LOG", "debug");
     }
+    pretty_env_logger::init();
 
     match cli.cmd {
         Command::OperatorCatalog => {

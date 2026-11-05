@@ -84,6 +84,12 @@ pub enum OnnxError {
     #[error("Failed to resolve external tensor data: {source}")]
     ExternalTensorDataError { source: Box<OnnxError> },
 
+    #[error("Failed to write cache file: {source}")]
+    CacheWriteError {
+        source: std::io::Error,
+        path: PathBuf,
+    },
+
     #[error("failed to parse ONNX protobuf: {0}")]
     ProtobufError(String),
 
@@ -1763,7 +1769,10 @@ pub fn cache_onnx_model<P: AsRef<Path>, Q: AsRef<Path>>(
     if let Some(parent) = cache_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(cache_path, model.encode_to_vec())?;
+    fs::write(cache_path, model.encode_to_vec()).map_err(|err| OnnxError::CacheWriteError {
+        source: err,
+        path: cache_path.to_owned(),
+    })?;
     Ok(())
 }
 

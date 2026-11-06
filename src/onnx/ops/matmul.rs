@@ -245,7 +245,6 @@ impl MatMulHandler {
         k: i64,
         block_size: i64,
     ) -> Result<ConversionResult, OnnxError> {
-        use crate::onnx::builder::map_ast_data_type;
         use rustnn::operator_options::MLGatherOptions;
 
         let label = output_label(node, node_name);
@@ -299,7 +298,7 @@ impl MatMulHandler {
         let opts = |tag: &str| OnnxBuilder::labeled_options(&format!("{label}__{tag}"));
         let x = b
             .builder
-            .cast_with_options(blob, map_ast_data_type(DataType::Int32)?, opts("i32"))
+            .cast_with_options(blob, DataType::Int32, opts("i32"))
             .map_err(map_op_error)?;
         let hi = b
             .builder

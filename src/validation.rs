@@ -11,7 +11,6 @@ use half::f16;
 use prost::Message;
 use rustnn::graph::OperandDescriptor;
 use rustnn::mlcontext::{Backend, MLContext, MLTensor, MLTensorDescriptor};
-use rustnn::operator_enums::MLOperandDataType;
 use rustnn::{load_graph_from_path, run_onnx_path_with_inputs, OnnxInput, TensorData};
 use safetensors::{tensor::Dtype, SafeTensors};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -595,6 +594,8 @@ fn clone_inputs(inputs: &[OnnxInput]) -> Vec<OnnxInput> {
             data: match &input.data {
                 TensorData::Float32(v) => TensorData::Float32(v.clone()),
                 TensorData::Float16(v) => TensorData::Float16(v.clone()),
+                TensorData::Bfloat16(v) => TensorData::Bfloat16(v.clone()),
+                TensorData::Float8e4m3(v) => TensorData::Float8e4m3(v.clone()),
                 TensorData::Int8(v) => TensorData::Int8(v.clone()),
                 TensorData::Uint8(v) => TensorData::Uint8(v.clone()),
                 TensorData::Int32(v) => TensorData::Int32(v.clone()),
@@ -607,7 +608,7 @@ fn clone_inputs(inputs: &[OnnxInput]) -> Vec<OnnxInput> {
 }
 
 fn tensor_descriptor(desc: &OperandDescriptor) -> MLTensorDescriptor {
-    let data_type = MLOperandDataType::try_from(desc.data_type).expect("WebNN operand type");
+    let data_type = desc.data_type;
     let mut tensor = MLTensorDescriptor::new(
         data_type,
         desc.static_or_max_shape()
@@ -630,7 +631,10 @@ fn write_input(
     }
     let result = match &input.data {
         TensorData::Float32(data) => context.write_tensor(tensor, data),
-        TensorData::Float16(data) => context.write_tensor(tensor, data),
+        TensorData::Float16(data) | TensorData::Bfloat16(data) => {
+            context.write_tensor(tensor, data)
+        }
+        TensorData::Float8e4m3(data) => context.write_tensor(tensor, data),
         TensorData::Int8(data) => context.write_tensor(tensor, data),
         TensorData::Uint32(data) => context.write_tensor(tensor, data),
         TensorData::Uint64(data) => context.write_tensor(tensor, data),

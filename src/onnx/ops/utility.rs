@@ -205,7 +205,7 @@ impl UtilityHandler {
             })?;
         let value_dtype = crate::onnx::convert::map_onnx_data_type(values.data_type)?;
         let value_bytes = crate::onnx::builder::tensor_proto_to_bytes(values)?;
-        let elem = value_dtype.bits_per_element() / 8;
+        let elem = value_dtype.rustnn_element_size_bits() / 8;
         if value_bytes.len() < 2 * elem {
             return Err(OnnxError::InvalidShape(format!(
                 "OneHot {node_name} values must hold [off, on]"
@@ -774,7 +774,7 @@ impl UtilityHandler {
         b: &mut OnnxBuilder<'_, '_, '_>,
         t: GbqTable<'_>,
     ) -> Result<ConversionResult, OnnxError> {
-        use crate::onnx::builder::{map_ast_data_type, tensor_proto_to_bytes};
+        use crate::onnx::builder::tensor_proto_to_bytes;
         use crate::onnx::builder_helpers::{i64_slice_to_mldim, reshape_with_shape};
 
         let inputs = node.input.as_slice();
@@ -813,7 +813,7 @@ impl UtilityHandler {
 
         let scales_dtype = crate::onnx::convert::map_onnx_data_type(t.scales.data_type)?;
         let mut scales_bytes = tensor_proto_to_bytes(t.scales)?;
-        let scales_len = rows_u * blocks_u * (scales_dtype.bits_per_element() / 8);
+        let scales_len = rows_u * blocks_u * (scales_dtype.rustnn_element_size_bits() / 8);
         if scales_bytes.len() < scales_len {
             return Err(OnnxError::InvalidShape(format!(
                 "GatherBlockQuantized scales hold {} bytes, need {scales_len}",
@@ -895,7 +895,7 @@ impl UtilityHandler {
 
         if t.bits == 4 {
             // Split bytes into nibbles in int32 and interleave them (low first).
-            let int32 = map_ast_data_type(DataType::Int32)?;
+            let int32 = DataType::Int32;
             let mut x = b
                 .builder
                 .cast_with_options(
@@ -980,7 +980,7 @@ impl UtilityHandler {
                 .builder
                 .cast_with_options(
                     x,
-                    map_ast_data_type(value_dtype)?,
+                    value_dtype,
                     OnnxBuilder::labeled_options(&format!("{output_name}__q")),
                 )
                 .map_err(map_op_error)?;

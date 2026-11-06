@@ -19,7 +19,7 @@
 // Activation and unary math operators. Plain unary ops (Relu, Sqrt, Floor, ...) plus parametric
 // activations (Elu, LeakyRelu, HardSigmoid), Clip -> clamp, and PRelu (binary).
 
-use crate::onnx::builder::{map_ast_data_type, map_op_error, OnnxBuilder};
+use crate::onnx::builder::{map_op_error, OnnxBuilder};
 use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
 use crate::protos::onnx::{NodeProto, TensorProto, TensorProto_DataType};
@@ -914,11 +914,7 @@ fn cast_to_dtype(
     label: &str,
 ) -> Result<MLOperand, OnnxError> {
     b.builder
-        .cast_with_options(
-            operand,
-            map_ast_data_type(data_type)?,
-            OnnxBuilder::labeled_options(label),
-        )
+        .cast_with_options(operand, data_type, OnnxBuilder::labeled_options(label))
         .map_err(map_op_error)
 }
 

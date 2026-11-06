@@ -5,7 +5,7 @@
 
 // Recurrent and positional operators: GRU, LSTM, RotaryEmbedding
 
-use crate::onnx::builder::{map_ast_data_type, map_op_error, operand_index, OnnxBuilder};
+use crate::onnx::builder::{map_op_error, operand_index, OnnxBuilder};
 use crate::onnx::builder_helpers::{
     i64_slice_to_mldim, map_op_result, output_label, record_node_output, reshape_with_shape,
     slice_with_params,
@@ -882,11 +882,7 @@ fn maybe_cast_for_rnn(
         return Ok(operand);
     }
     b.builder
-        .cast_with_options(
-            operand,
-            map_ast_data_type(target_type)?,
-            OnnxBuilder::labeled_options(label),
-        )
+        .cast_with_options(operand, target_type, OnnxBuilder::labeled_options(label))
         .map_err(map_op_error)
 }
 

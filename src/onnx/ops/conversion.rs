@@ -7,9 +7,7 @@
 // Type conversion and constant operators: Cast, Constant, QuantizeLinear,
 // DequantizeLinear, DynamicQuantizeLinear
 
-use crate::onnx::builder::{
-    map_ast_data_type, map_onnx_tensor_type, map_op_error, tensor_proto_to_bytes, OnnxBuilder,
-};
+use crate::onnx::builder::{map_op_error, tensor_proto_to_bytes, OnnxBuilder};
 use crate::onnx::builder_helpers::{output_label, record_node_output};
 use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::onnx::ops::{ConversionContext, ConversionResult, OpHandler};
@@ -112,9 +110,7 @@ impl ConversionHandler {
                 ))
             })?;
             let zero_name = format!("{output_name}__zero");
-            let zero_len = input_type.storage_byte_length(1).ok_or_else(|| {
-                OnnxError::InvalidShape("Cast boolean zero size overflow".to_string())
-            })?;
+            let zero_len = input_type.rustnn_storage_byte_length(1);
             b.register_constant_from_bytes(&zero_name, input_type, &[], vec![0; zero_len])?;
             let zero = b.resolve_operand(&zero_name)?;
             let out = b
@@ -149,7 +145,7 @@ impl ConversionHandler {
             }
             return Ok(ConversionResult::default());
         }
-        let target_type = map_onnx_tensor_type(to_type)?;
+        let target_type = crate::onnx::convert::map_onnx_data_type(to_type)?;
         let opts = OnnxBuilder::labeled_options(&output_name);
         let out = b
             .builder
@@ -187,14 +183,13 @@ impl ConversionHandler {
                 inputs[1]
             ))
         })?;
-        let cast_type = map_ast_data_type(target_type)?;
 
         let output_name = output_label(node, node_name);
         let input = b.resolve_operand(&inputs[0])?;
         let opts = OnnxBuilder::labeled_options(&output_name);
         let out = b
             .builder
-            .cast_with_options(input, cast_type, opts)
+            .cast_with_options(input, target_type, opts)
             .map_err(map_op_error)?;
 
         if let Some(onnx_out) = node.output.first() {

@@ -6,13 +6,12 @@
 
 //! ONNX -> [`MLGraphBuilder`] bridge (operand map, naming, rustnn error mapping).
 
-use crate::onnx::convert::{map_onnx_data_type, sanitize_identifier, OnnxError};
+use crate::onnx::convert::{sanitize_identifier, OnnxError};
 use crate::protos::onnx::{TensorProto, TensorProto_DataType};
 use rustnn::error::{Error as RustnnError, GraphBuilderError};
 use rustnn::graph::Dimension;
 use rustnn::mlcontext::MLOperandDescriptor;
 use rustnn::mlcontext::{MLGraph, MLGraphBuilder, MLNamedOperands, MLOperand};
-use rustnn::operator_enums::MLOperandDataType;
 use rustnn::operator_options::MLOperatorOptions;
 use rustnn::DataType;
 use std::collections::{HashMap, HashSet};
@@ -250,9 +249,8 @@ pub fn descriptor_static(
     data_type: DataType,
     shape: &[u32],
 ) -> Result<MLOperandDescriptor, OnnxError> {
-    let dt = map_ast_data_type(data_type)?;
     Ok(MLOperandDescriptor::new(
-        dt,
+        data_type,
         shape.iter().map(|&d| d as u64).collect(),
     ))
 }
@@ -261,7 +259,6 @@ pub fn descriptor_from_parts(
     data_type: DataType,
     shape: &[Dimension],
 ) -> Result<MLOperandDescriptor, OnnxError> {
-    let dt = map_ast_data_type(data_type)?;
     let mut dims = Vec::with_capacity(shape.len());
     for dim in shape {
         match dim {
@@ -269,26 +266,7 @@ pub fn descriptor_from_parts(
             Dimension::Dynamic(d) => dims.push(d.max_size as u64),
         }
     }
-    Ok(MLOperandDescriptor::new(dt, dims))
-}
-
-pub fn map_ast_data_type(dt: DataType) -> Result<MLOperandDataType, OnnxError> {
-    Ok(match dt {
-        DataType::Float32 => MLOperandDataType::Float32,
-        DataType::Float16 => MLOperandDataType::Float16,
-        DataType::Int32 => MLOperandDataType::Int32,
-        DataType::Uint32 => MLOperandDataType::Uint32,
-        DataType::Int64 => MLOperandDataType::Int64,
-        DataType::Uint64 => MLOperandDataType::Uint64,
-        DataType::Int8 => MLOperandDataType::Int8,
-        DataType::Uint8 => MLOperandDataType::Uint8,
-        DataType::Int4 => MLOperandDataType::Int4,
-        DataType::Uint4 => MLOperandDataType::Uint4,
-    })
-}
-
-pub fn map_onnx_tensor_type(onnx_type: i32) -> Result<MLOperandDataType, OnnxError> {
-    map_ast_data_type(map_onnx_data_type(onnx_type)?)
+    Ok(MLOperandDescriptor::new(data_type, dims))
 }
 
 /// Number of elements implied by `TensorProto.dims`.

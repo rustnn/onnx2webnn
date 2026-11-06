@@ -343,15 +343,7 @@ fn i64_shape_to_dims(shape: &[i64]) -> Vec<rustnn::graph::Dimension> {
 
 #[cfg(test)]
 fn dummy_constant_bytes(dtype: rustnn::DataType, numel: usize) -> Vec<u8> {
-    let elem_size = match dtype {
-        rustnn::DataType::Float32 => 4,
-        rustnn::DataType::Float16 => 2,
-        rustnn::DataType::Int32 | rustnn::DataType::Uint32 => 4,
-        rustnn::DataType::Int64 | rustnn::DataType::Uint64 => 8,
-        rustnn::DataType::Int8 | rustnn::DataType::Uint8 => 1,
-        rustnn::DataType::Int4 | rustnn::DataType::Uint4 => 1,
-    };
-    vec![0u8; numel.saturating_mul(elem_size).max(elem_size)]
+    vec![0u8; dtype.rustnn_storage_byte_length(numel)]
 }
 
 #[cfg(test)]

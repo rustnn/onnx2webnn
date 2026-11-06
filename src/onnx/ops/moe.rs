@@ -188,7 +188,7 @@ fn dequantize_expert_weights(
                 .builder
                 .cast_with_options(
                     weights,
-                    crate::onnx::builder::map_ast_data_type(dtype)?,
+                    dtype,
                     OnnxBuilder::labeled_options(&format!("{const_name}__cast")),
                 )
                 .map_err(map_op_error)?;

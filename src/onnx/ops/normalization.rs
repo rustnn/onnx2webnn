@@ -8,7 +8,7 @@
 // GroupNormalization, RMSNormalization, SimplifiedLayerNormalization,
 // SkipSimplifiedLayerNormalization, Softmax, LogSoftmax, Hardmax
 
-use crate::onnx::builder::{map_ast_data_type, map_op_error, operand_index, OnnxBuilder};
+use crate::onnx::builder::{map_op_error, operand_index, OnnxBuilder};
 use crate::onnx::builder_helpers::{
     expand_with_shape, i64_slice_to_mldim, output_label, record_node_output, reshape_with_shape,
 };
@@ -702,7 +702,7 @@ impl NormalizationHandler {
             b.builder
                 .cast_with_options(
                     input,
-                    map_ast_data_type(DataType::Float32)?,
+                    DataType::Float32,
                     OnnxBuilder::labeled_options(&format!("{output_name}__argmax_input")),
                 )
                 .map_err(map_op_error)?
@@ -729,7 +729,7 @@ impl NormalizationHandler {
             .builder
             .cast_with_options(
                 argmax,
-                map_ast_data_type(DataType::Int64)?,
+                DataType::Int64,
                 OnnxBuilder::labeled_options(&argmax_i64_label),
             )
             .map_err(map_op_error)?;

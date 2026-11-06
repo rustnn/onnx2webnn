@@ -458,6 +458,8 @@ fn clone_tensor_data(data: &TensorData) -> TensorData {
     match data {
         TensorData::Float32(v) => TensorData::Float32(v.clone()),
         TensorData::Float16(v) => TensorData::Float16(v.clone()),
+        TensorData::Bfloat16(v) => TensorData::Bfloat16(v.clone()),
+        TensorData::Float8e4m3(v) => TensorData::Float8e4m3(v.clone()),
         TensorData::Int8(v) => TensorData::Int8(v.clone()),
         TensorData::Uint8(v) => TensorData::Uint8(v.clone()),
         TensorData::Int32(v) => TensorData::Int32(v.clone()),

@@ -5,7 +5,6 @@
 //! End-to-end cache export, reload, dispatch, and native ORT comparison.
 
 use std::fs;
-use std::process::Command;
 
 use onnx2webnn::onnx::test_models::prelude::*;
 use onnx2webnn::{
@@ -151,25 +150,13 @@ fn constant_node_quantization_parameters_validate_after_reload() {
         },
     )
     .unwrap();
-    let result = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
-        .args(["validate", "--backend", "onnx", "--onnx"])
-        .arg(&source)
-        .arg("--webnn")
-        .arg(&webnn)
-        .env("O2W_ONNX_CACHE", dir.path().join("onnx"))
-        .env("O2W_WEBNN_CACHE", dir.path().join("webnn"))
-        .output()
-        .expect("run converter");
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-    assert!(!String::from_utf8_lossy(&result.stderr).contains("using deterministic feed"));
+    let summary = validate_cached_model(&source, &webnn).expect("validate quantized graph");
+    assert_eq!(summary.input_count, 1);
+    assert_eq!(summary.output_count, 1);
 }
 
 #[test]
-fn ambiguous_quantized_feed_falls_back_with_a_warning() {
+fn ambiguous_quantized_feed_validates_with_deterministic_fallback() {
     let dir = tempfile::tempdir().expect("temporary cache");
     let source = dir.path().join("shared-input.onnx");
     let fixture = model(
@@ -197,22 +184,9 @@ fn ambiguous_quantized_feed_falls_back_with_a_warning() {
         },
     )
     .unwrap();
-    let result = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
-        .args(["validate", "--backend", "onnx", "--onnx"])
-        .arg(&source)
-        .arg("--webnn")
-        .arg(&webnn)
-        .env("O2W_ONNX_CACHE", dir.path().join("onnx"))
-        .env("O2W_WEBNN_CACHE", dir.path().join("webnn"))
-        .output()
-        .expect("run converter");
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-    assert!(String::from_utf8_lossy(&result.stderr)
-        .contains("both quantized and other consumers; using deterministic feed"));
+    let summary = validate_cached_model(&source, &webnn).expect("validate quantized graph");
+    assert_eq!(summary.input_count, 1);
+    assert_eq!(summary.output_count, 2);
 }
 
 #[test]

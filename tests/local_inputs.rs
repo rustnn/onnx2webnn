@@ -1,14 +1,13 @@
-//! SafeTensors input and local-model CLI regressions.
+//! SafeTensors input and local-model API regressions.
 
-use onnx2webnn::load_safetensors_inputs;
 use onnx2webnn::onnx::test_models::prelude::*;
 use onnx2webnn::protos::onnx::{tensor_shape_proto::dimension::Value, TensorProto_DataType};
+use onnx2webnn::{load_safetensors_inputs, validate_cached_model_with_inputs_on_backend};
 use prost::Message;
 use rustnn::TensorData;
 use safetensors::tensor::{Dtype, TensorView};
 use std::collections::HashMap;
 use std::fs;
-use std::process::Command;
 
 fn identity_model(path: &std::path::Path, dtype: i32, shape: &[i64]) {
     let fixture = model(
@@ -342,37 +341,31 @@ fn local_models_use_supplied_inputs() {
                     .collect(),
             )],
         );
-        let output = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
-            .args([
-                "validate",
-                "--backend",
-                "onnx",
-                "--onnx",
-                model_path.to_str().unwrap(),
-                "--webnn",
-                webnn.to_str().unwrap(),
-                "--input",
-                feeds.to_str().unwrap(),
-                "--override-dim",
-                &format!("n={length}"),
-                "--pin-input",
-                &format!("flag={}", index == 1),
-            ])
-            .env("O2W_ONNX_CACHE", dir.path().join("onnx"))
-            .env("O2W_WEBNN_CACHE", dir.path().join("webnn"))
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(String::from_utf8_lossy(&output.stdout).contains("PASS"));
+        let pins = HashMap::from([("flag".into(), i64::from(index == 1))]);
+        let (dims, inputs) = load_safetensors_inputs(
+            &model_path,
+            &feeds,
+            &HashMap::from([("n".into(), length as u32)]),
+            &pins,
+        )
+        .unwrap();
+        assert_eq!(dims["n"], length as u32);
+        let summary = validate_cached_model_with_inputs_on_backend(
+            &model_path,
+            &webnn,
+            inputs,
+            &pins,
+            rustnn::mlcontext::Backend::Onnx,
+        )
+        .expect("validate supplied inputs");
+        assert_eq!(summary.input_count, 1);
+        assert_eq!(summary.pinned_input_count, 1);
+        assert_eq!(summary.output_count, 1);
     }
 }
 
 #[test]
-fn numerical_disagreement_fails_local_command() {
+fn numerical_disagreement_fails_validation() {
     let dir = tempfile::tempdir().unwrap();
     let model_path = dir.path().join("cumprod.onnx");
     let feeds = dir.path().join("negative.safetensors");
@@ -401,23 +394,15 @@ fn numerical_disagreement_fails_local_command() {
         },
     )
     .unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_onnx2webnn"))
-        .args([
-            "validate",
-            "--webnn",
-            webnn.to_str().unwrap(),
-            "--backend",
-            "onnx",
-            "--onnx",
-            model_path.to_str().unwrap(),
-            "--input",
-            feeds.to_str().unwrap(),
-        ])
-        .env("O2W_ONNX_CACHE", dir.path().join("onnx"))
-        .env("O2W_WEBNN_CACHE", dir.path().join("webnn"))
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("mismatch"), "{stderr}");
+    let (_, inputs) =
+        load_safetensors_inputs(&model_path, &feeds, &HashMap::new(), &HashMap::new()).unwrap();
+    let error = validate_cached_model_with_inputs_on_backend(
+        &model_path,
+        &webnn,
+        inputs,
+        &HashMap::new(),
+        rustnn::mlcontext::Backend::Onnx,
+    )
+    .expect_err("numerical disagreement must fail validation");
+    assert!(error.to_string().contains("mismatch"), "{error}");
 }

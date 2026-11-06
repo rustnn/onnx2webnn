@@ -141,10 +141,10 @@ impl Sweep {
 
     fn convert(&self, idx: usize, entry: &Entry) {
         let label = entry.label(idx);
-        let backend: Backend = std::env::var("O2W_TEST_BACKEND")
+        let backend: Backend = std::env::var("O2W_SKELETON_BACKEND")
             .unwrap_or_else(|_| "onnx".into())
             .parse()
-            .expect("O2W_TEST_BACKEND must be onnx, coreml, or trtx (or any other rustnn::mlcontext::Backend)");
+            .expect("O2W_SKELETON_BACKEND must be onnx, coreml, or trtx (or any other rustnn::mlcontext::Backend)");
         let options = ConvertOptions {
             free_dim_overrides: entry.override_dims.clone(),
             optimize: true,

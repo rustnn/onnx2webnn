@@ -149,7 +149,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           O2W_MODEL_TEST_JOBS: ${{ matrix.model_test_jobs || 2 }}
           O2W_MODEL_TEST_SKIP_HEAVY: 1
-          O2W_TEST_BACKEND: ${{ matrix.test_backend }}
+          O2W_SKELETON_BACKEND: ${{ matrix.test_backend }}
         run: cargo test --release --locked ${{ matrix.cargo_flags }}
 
       - name: Validate curated full model

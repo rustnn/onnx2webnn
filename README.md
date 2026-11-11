@@ -1,5 +1,5 @@
-> **Last edited:** `2026-11-05T18:30:12Z`<br>
-> **Checkout:** `feat/consolidate-cli` at `33947e6`
+> **Last edited:** `2026-11-08T18:11:41Z`<br>
+> **Checkout:** `backend-reporting` at `b519633`
 >
 > **Freshness:** Use this document only when this provenance is recent relative to the relevant
 > code and commits; otherwise verify the implementation, tests, and Git history before relying
@@ -9,7 +9,9 @@
 
 onnx2webnn lowers ONNX opsets **1–26** through [RustNN](https://github.com/rustnn/rustnn)'s WebNN builder.
 `convert` exports reloadable `.webnn`/Safetensors artifacts. Add `--backend onnx` to build with
-CPU ONNX Runtime, or select another available RustNN backend.
+CPU ONNX Runtime, or select another compiled-in RustNN backend.
+`onnx2webnn convert --help` lists all known and compiled-in backends directly from RustNN,
+without initializing runtimes. Backend-selection errors include both lists.
 `validate` loads existing graphs and numerically compares execution against native CPU ORT.
 `validate-manifest` converts and validates models selected from a manifest. See [operator coverage](docs/operator-conversion-status.md)
 and [model results](docs/model-validation-status-triage.md).
@@ -30,9 +32,9 @@ make -C ../rustnn onnxruntime-download
 
 Set `ORT_DYLIB_PATH` to the downloaded shared library before ORT use; see
 [CI setup](.github/workflows/ci.yml) for platform paths.
-A compiled backend still needs its native runtime and compatible devices. For ONNX context
-initialization failures, the diagnostic reports the `ORT_DYLIB_PATH` setting. TensorRT-RTX
-and LiteRT failures include runtime prerequisites; upstream initialization causes may be unavailable.
+A compiled backend still needs its native runtime and compatible devices. Context initialization
+errors show indented causal chains, preserving RustNN's runtime-loading and device-discovery
+failure details. These are error causes, not program stack traces.
 One CLI preflight checks compiled backends, requested dynamic-input support, and runtime
 initialization before processing models, writing caches, or downloading manifest models.
 Validation also checks native ONNX Runtime. Export-only conversion and the operator catalog
@@ -43,6 +45,10 @@ cargo build --locked
 # or
 cargo build --release --locked
 ```
+
+Enable optional backends with `--features coreml` or `--features trtx`, or forward a RustNN
+feature directly, e.g. `cargo build --features rustnn/burn-cpu-runtime`. Platform and native
+runtime requirements still apply.
 
 The `Makefile` also provides `build`, `test`, `fmt`, and `check` targets.
 
@@ -167,9 +173,10 @@ feed, while malformed quantization parameters still fail validation.
 ## Model sweep
 
 [`manifest.json`](tests/models/manifest.json) is a generated Transformers.js selection, not a
-pinned CI gate. The skeleton sweep fetches graph structure and small constants with HTTP ranges,
-zero-fills missing large weights, and builds each graph in ORT or CI-selected CoreML. It checks
-construction, not numerical correctness.
+pinned CI gate. Both sweeps exclude the invalid Chronos encoder/decoder source graphs; see
+[model exclusions](docs/transformersjs_excluded_models.md). The skeleton sweep fetches graph
+structure and small constants with HTTP ranges, zero-fills missing large weights, and builds each
+graph in ORT or CI-selected CoreML. It checks construction, not numerical correctness.
 
 ### Numerical-validation CI
 

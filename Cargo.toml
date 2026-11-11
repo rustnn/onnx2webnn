@@ -40,7 +40,8 @@ ureq = { version = "2.10", default-features = false, features = ["tls"] }
 sha2 = "0.10"
 safetensors = "0.7"
 
-rustnn = { git = "https://github.com/rustnn/rustnn", branch = "main", default-features = false, features = ["onnx-runtime"] }
+# Temporary until Backend::compilable is available upstream.
+rustnn = { git = "https://github.com/FelixKrall/rustnn", branch = "cleanup-backend-selection", default-features = false, features = ["onnx-runtime"] }
 bytemuck = "1.15"
 webnn-onnx-utils = { git = "https://github.com/rustnn/webnn-onnx-utils", branch = "main" }
 huggingface-hub = { git = "https://github.com/huggingface/huggingface_hub_rust.git", rev = "20acfd61a767dcf7d6a0cb7f4a02ac8406fd8a14", version = "0.0.1", features = ["blocking", "xet"] }

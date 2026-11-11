@@ -233,7 +233,8 @@ impl Sweep {
                 });
             }
             Err(error) => {
-                eprintln!("\n{progress}\nFAIL {label}\n     {error}\n{MODEL_BARRIER}\n");
+                let diagnostic = error.replace('\n', "\n     ");
+                eprintln!("\n{progress}\nFAIL {label}\n     {diagnostic}\n{MODEL_BARRIER}\n");
                 self.results.lock().unwrap().push(ModelResult {
                     index,
                     label,
@@ -266,7 +267,9 @@ impl Sweep {
             },
             self.options.backend,
         )
-        .map_err(|e| format!("conversion/export: {e}"))?;
+        .map_err(|e| {
+            rustnn::error::format_error_chain(&crate::OnnxError::context("conversion/export", e))
+        })?;
         if !webnn_path.exists() || !webnn_path.with_extension("safetensors").exists() {
             return Err("export did not produce .webnn and .safetensors".to_string());
         }
@@ -277,7 +280,7 @@ impl Sweep {
             &entry.pin_inputs,
             self.options.backend,
         )
-        .map_err(|e| classify(&e.to_string()))?;
+        .map_err(|e| classify(&rustnn::error::format_error_chain(&e)))?;
         Ok((
             summary.input_count,
             summary.pinned_input_count,

@@ -47,6 +47,70 @@ fn saved_add_graph_reloads_and_matches_native_ort() {
 }
 
 #[test]
+fn indexing_models_preserve_integer_inputs_and_reject_float_inputs() {
+    use onnx2webnn::protos::onnx::TensorProto_DataType;
+    use rustnn::{OnnxInput, TensorData};
+
+    for op in ["Gather", "ScatterND"] {
+        let index_shape = if op == "Gather" { vec![1] } else { vec![1, 1] };
+        let output_shape = if op == "Gather" {
+            vec![1, 2]
+        } else {
+            vec![2, 2]
+        };
+        for dtype in [TensorProto_DataType::Int64, TensorProto_DataType::Float] {
+            let dir = tempfile::tempdir().unwrap();
+            let source = dir.path().join("indices.onnx");
+            let webnn = dir.path().join("indices.webnn");
+            let inputs = if op == "Gather" {
+                vec!["data", "indices"]
+            } else {
+                vec!["data", "indices", "updates"]
+            };
+            let fixture = model(
+                17,
+                graph(
+                    "index_types",
+                    vec![tensor_input("indices", dtype as i32, &index_shape)],
+                    vec![f32_output("y", &output_shape)],
+                    vec![node(op, "index", &inputs, &["y"], &[])],
+                    vec![
+                        f32_init("data", &[2, 2], &[1., 2., 3., 4.]),
+                        f32_init("updates", &[1, 2], &[5., 6.]),
+                    ],
+                ),
+            );
+            fs::write(&source, fixture.encode_to_vec()).unwrap();
+            let result = export_onnx(
+                &source,
+                ConvertOptions {
+                    output_path: Some(webnn.clone()),
+                    ..Default::default()
+                },
+            );
+            if dtype == TensorProto_DataType::Float {
+                let error = result.unwrap_err().to_string();
+                assert!(error.contains("indices allows"), "{op}: {error}");
+                assert!(error.contains("Float32"), "{op}: {error}");
+            } else {
+                result.unwrap();
+                onnx2webnn::validate_cached_model_with_inputs(
+                    &source,
+                    &webnn,
+                    vec![OnnxInput {
+                        name: "indices".to_string(),
+                        shape: index_shape.iter().map(|&dim| dim as usize).collect(),
+                        data: TensorData::Int64(vec![0]),
+                    }],
+                    &Default::default(),
+                )
+                .unwrap();
+            }
+        }
+    }
+}
+
+#[test]
 fn scale_aware_quantized_feed_reloads_and_matches_native_ort() {
     let dir = tempfile::tempdir().expect("temporary cache");
     let source = dir.path().join("quantized.onnx");
@@ -273,6 +337,45 @@ fn packed_uint4_matmul_round_trips_and_matches_native_ort() {
     let summary = validate_cached_model(&source, &cached_webnn).expect("validate packed fixture");
     assert_eq!(summary.input_count, 1);
     assert_eq!(summary.output_count, 1);
+
+    let uncompiled_webnn = dir.path().join("uncompiled.webnn");
+    export_onnx(
+        &source,
+        ConvertOptions {
+            output_path: Some(uncompiled_webnn.clone()),
+            ..Default::default()
+        },
+    )
+    .expect("export packed fixture without a backend");
+    validate_cached_model(&source, &uncompiled_webnn).expect("validate uncompiled packed fixture");
+}
+
+fn format_dtype_failure(
+    stage: &str,
+    label: &str,
+    error: &(dyn std::error::Error + 'static),
+) -> String {
+    format!(
+        "{stage} {label}:\n{}",
+        rustnn::error::format_error_chain(error)
+    )
+}
+
+#[test]
+fn integer_dtype_diagnostic_preserves_nested_backend_failure() {
+    let error = onnx2webnn::OnnxError::Context {
+        message: "default graph build failed".into(),
+        source: Box::new(rustnn::error::Error::GraphBuildError {
+            source: std::io::Error::other("CoreML does not support Identity int8 graph I/O").into(),
+        }),
+    };
+    let diagnostic = format_dtype_failure("convert", "int8", &error);
+    assert!(diagnostic.contains("CoreML"), "{diagnostic}");
+    assert!(diagnostic.contains("Identity"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("default graph build failed\n"),
+        "{diagnostic}"
+    );
 }
 
 fn integer_dtype_round_trip(label: &str, elem_type: i32) -> Result<(), String> {
@@ -298,9 +401,9 @@ fn integer_dtype_round_trip(label: &str, elem_type: i32) -> Result<(), String> {
             ..ConvertOptions::default()
         },
     )
-    .map_err(|error| format!("convert {label}: {error}"))?;
+    .map_err(|error| format_dtype_failure("convert", label, &error))?;
     let summary = validate_cached_model(&source, &cached_webnn)
-        .map_err(|error| format!("validate {label}: {error}"))?;
+        .map_err(|error| format_dtype_failure("validate", label, &error))?;
     if summary.input_count != 1 || summary.output_count != 1 {
         return Err(format!(
             "validate {label}: expected one input and output, got {} and {}",
@@ -978,8 +1081,12 @@ fn validate_folding_regression(fixture: onnx2webnn::protos::onnx::ModelProto) {
             },
         )
         .unwrap();
-        validate_cached_model(&source, &webnn)
-            .unwrap_or_else(|error| panic!("folding={optimize}: {error}"));
+        validate_cached_model(&source, &webnn).unwrap_or_else(|error| {
+            panic!(
+                "folding={optimize}:\n{}",
+                rustnn::error::format_error_chain(&error)
+            )
+        });
     }
 }
 

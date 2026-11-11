@@ -1,7 +1,7 @@
 # Transformers.js Excluded Models
 
-> **Last edited:** `2026-10-16T18:05:10Z`<br>
-> **Checkout:** `validation-enhancements` at `afb644f`
+> **Last edited:** `2026-11-08T18:11:41Z`<br>
+> **Checkout:** `backend-reporting` at `b519633`
 >
 > **Freshness:** Use this document only when this provenance is recent relative to the relevant
 > code and commits; otherwise verify the implementation, tests, and Git history before relying
@@ -14,6 +14,11 @@ parsed. See [operator status](operator-conversion-status.md) for general support
 
 The 23 September 2026 skeleton audit found no fully supported excluded component. Some entries
 with unresolved dimensions were not fully retested.
+
+## [kashif/chronos-2-onnx](https://huggingface.co/kashif/chronos-2-onnx)
+
+- `onnx/encoder_model.onnx` and `onnx/decoder_model_merged.onnx`: invalid source graphs feed
+  Float32 indices to `Gather`; native ORT and RustNN reject them.
 
 ## [onnx-community/dpt-dinov2-small-kitti](https://huggingface.co/onnx-community/dpt-dinov2-small-kitti)
 

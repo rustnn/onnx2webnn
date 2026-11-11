@@ -192,6 +192,8 @@ mod tests {
         tc.value_shapes.insert("indices".to_string(), vec![2, 1]);
         tc.value_shapes.insert("updates".to_string(), vec![2, 3]);
         tc.value_types.insert("data".to_string(), DataType::Float32);
+        tc.value_types
+            .insert("indices".to_string(), DataType::Int64);
         let result =
             crate::onnx::ops::convert_handler_with_context(&handler, &node, &tc.ctx()).unwrap();
         assert_eq!(result.output_types.get("y"), Some(&DataType::Float32));

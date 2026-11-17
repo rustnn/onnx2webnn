@@ -1,7 +1,7 @@
 # Full-model numerical validation status and triage
 
-> **Last edited:** `2026-10-16T23:16:29Z`<br>
-> **Checkout:** `validation-enhancements` at `ae2e0cc`
+> **Last edited:** `2026-11-08T18:11:41Z`<br>
+> **Checkout:** `backend-reporting` at `b519633`
 >
 > **Freshness:** Use this document only when this provenance is recent relative to the relevant
 > code and commits; otherwise verify the implementation, tests, and Git history before relying
@@ -18,7 +18,9 @@ test a growing KV cache or a full prefill-to-decode loop.
 `transformers.js` repository per Hugging Face task and the ONNX components Transformers.js would
 load. It excludes [known blockers](transformersjs_excluded_models.md), reuses dimension overrides,
 and adds separate prefill/decode cases where needed. The current
-[`manifest.json`](../tests/models/manifest.json) has **28 repositories, 44 files, 51 cases**.
+[`manifest.json`](../tests/models/manifest.json) has **27 repositories, 42 files, 49 cases**.
+The invalid Chronos encoder/decoder are excluded; the recorded 51-case results below predate
+this exclusion.
 Last generated around early September 2026, it follows publisher `main` revisions; it is not an
 immutable top-50 benchmark.
 

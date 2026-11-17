@@ -1,7 +1,7 @@
 # Real-weight validation failures
 
-> **Last edited:** `2026-10-16T23:16:29Z`<br>
-> **Checkout:** `validation-enhancements` at `ae2e0cc`
+> **Last edited:** `2026-11-08T18:11:41Z`<br>
+> **Checkout:** `backend-reporting` at `b519633`
 >
 > **Freshness:** Use this document only when this provenance is recent relative to the relevant
 > code and commits; otherwise verify the implementation, tests, and Git history before relying
@@ -68,5 +68,5 @@ output of `ConstantOfShape`; Gather indices must be integer.
 | 45 | `kashif--chronos-2-onnx :: encoder_model.onnx` |
 | 46 | `kashif--chronos-2-onnx :: decoder_model_merged.onnx` |
 
-Both paths resolve to the same invalid publisher artifact. They remain in `all` and `match`, but
-cannot validate onnx2webnn until native ORT accepts the source.
+Both paths resolve to the same invalid publisher artifact. They are now excluded from the shared
+manifest used by the CLI and skeleton sweeps; the case numbers above refer to the recorded run.

@@ -2249,7 +2249,8 @@ mod tests {
         value_shapes.insert("indices".to_string(), vec![2]);
         let const_values = std::collections::HashMap::new();
         let value_ids = std::collections::HashMap::new();
-        let value_types = std::collections::HashMap::new();
+        let value_types =
+            std::collections::HashMap::from([("indices".to_string(), rustnn::DataType::Int64)]);
         let context = ConversionContext {
             initializers: &initializers,
             value_shapes: &value_shapes,

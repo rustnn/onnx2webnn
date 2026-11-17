@@ -157,13 +157,13 @@ impl Sweep {
         let result = match &self.source {
             Source::Dir(dir) => convert_onnx_with_backend(dir.join(&entry.file), options, backend)
                 .map(|_| String::new())
-                .map_err(|e| e.to_string()),
+                .map_err(|e| rustnn::error::format_error_chain(&e)),
             Source::Hub | Source::StripDir(_) => self.skeleton(entry).and_then(|(bytes, note)| {
                 let model =
                     ModelProto::decode(&bytes[..]).map_err(|e| format!("decode skeleton: {e}"))?;
                 convert_model_proto_with_backend(model, &options, backend)
                     .map(|_| note)
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| rustnn::error::format_error_chain(&e))
             }),
         };
         match result {

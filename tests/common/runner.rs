@@ -48,7 +48,6 @@ pub fn assert_op_matches_ort_with_options(
     test_opset: i64,
     options: &ConvertOptions,
 ) {
-    // Backend build errors are only visible through `log` (RUST_LOG=error).
     let _ = pretty_env_logger::try_init();
     let declared_opset = model
         .opset_import
@@ -67,7 +66,10 @@ pub fn assert_op_matches_ort_with_options(
     match expect {
         ExpectConvertOp::UnsupportedOp => match result {
             Err(err) if err.is_unsupported_op() => {}
-            Err(err) => panic!("expected UnsupportedOp, got {err}"),
+            Err(err) => panic!(
+                "expected UnsupportedOp, got:\n{}",
+                rustnn::error::format_error_chain(&err)
+            ),
             Ok(_) => panic!("expected UnsupportedOp, got Ok"),
         },
         ExpectConvertOp::ConversionError => match result {
@@ -75,13 +77,22 @@ pub fn assert_op_matches_ort_with_options(
             Ok(_) => panic!("expected conversion failure, got Ok"),
         },
         ExpectConvertOp::Success => {
-            let mut validated =
-                result.unwrap_or_else(|err| panic!("expected conversion success, got {err}"));
+            let mut validated = result.unwrap_or_else(|err| {
+                panic!(
+                    "expected conversion success, got:\n{}",
+                    rustnn::error::format_error_chain(&err)
+                )
+            });
             let inputs = build_ort_inputs(&model).expect("failed to build ORT inputs");
             let reference_model = ort_reference_model(&model);
             let reference_bytes = reference_model.encode_to_vec();
             let reference = run_onnx_with_inputs(&reference_bytes, None, clone_ort_inputs(&inputs))
-                .unwrap_or_else(|err| panic!("ORT reference run failed: {err}"));
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "ORT reference run failed:\n{}",
+                        rustnn::error::format_error_chain(&err)
+                    )
+                });
             let actual = dispatch_and_collect(&mut validated, &model, &inputs)
                 .unwrap_or_else(|err| panic!("rustnn dispatch failed: {err}"));
             compare_outputs(&model, &reference, &actual);
@@ -532,7 +543,7 @@ fn dispatch_and_collect(
         let tensor_desc = operand_descriptor_to_tensor_desc(desc);
         let tensor = context
             .create_tensor(&tensor_desc)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| rustnn::error::format_error_chain(&e))?;
         write_ort_input(context, &tensor, ort_input);
         owned_inputs.push(tensor);
         input_names.push(webnn_name);
@@ -554,7 +565,7 @@ fn dispatch_and_collect(
         let tensor_desc = operand_descriptor_to_tensor_desc(desc);
         let tensor = context
             .create_tensor(&tensor_desc)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| rustnn::error::format_error_chain(&e))?;
         output_names.push(webnn_key.clone());
         owned_outputs.push(tensor);
         output_keys.insert(out.name.clone(), webnn_key);
@@ -566,7 +577,7 @@ fn dispatch_and_collect(
 
     context
         .dispatch(graph, &input_bindings, &output_bindings)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| rustnn::error::format_error_chain(&e))?;
 
     let mut results = HashMap::new();
     for (onnx_name, webnn_key) in output_keys {
@@ -594,14 +605,14 @@ fn read_tensor_as_f64(
             let mut buf = vec![0.0f32; count];
             context
                 .read_tensor(tensor, &mut buf)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| rustnn::error::format_error_chain(&e))?;
             Ok(buf.into_iter().map(f64::from).collect())
         }
         rustnn::DataType::Float16 => {
             let mut buf = vec![0u16; count];
             context
                 .read_tensor(tensor, &mut buf)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| rustnn::error::format_error_chain(&e))?;
             Ok(buf
                 .into_iter()
                 .map(|v| f64::from(f16::from_bits(v).to_f32()))
@@ -611,21 +622,21 @@ fn read_tensor_as_f64(
             let mut buf = vec![0i32; count];
             context
                 .read_tensor(tensor, &mut buf)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| rustnn::error::format_error_chain(&e))?;
             Ok(buf.into_iter().map(|v| v as f64).collect())
         }
         rustnn::DataType::Int64 => {
             let mut buf = vec![0i64; count];
             context
                 .read_tensor(tensor, &mut buf)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| rustnn::error::format_error_chain(&e))?;
             Ok(buf.into_iter().map(|v| v as f64).collect())
         }
         rustnn::DataType::Uint8 => {
             let mut buf = vec![0u8; count];
             context
                 .read_tensor(tensor, &mut buf)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| rustnn::error::format_error_chain(&e))?;
             Ok(buf.into_iter().map(f64::from).collect())
         }
         other => Err(format!("unsupported output read dtype {other:?}")),
